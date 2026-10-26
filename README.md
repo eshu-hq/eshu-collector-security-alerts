@@ -39,20 +39,19 @@ GOPROXY=proxy.golang.org go list -m github.com/eshu-hq/eshu-sdk/factschema@v0.1.
   (`identity.go`), coverage annotation and freshness digest
   (`coverage.go`), kind/schema admission (`schema.go`), claim-ID minting
   (`claimid.go`), and a host-wired metrics seam (`metrics.go`).
-- `grant/` — fail-closed stub enforcing the core-issued producer grant
-  draft (`producer-grant.manifest.DRAFT.yaml` in eshu-hq/eshu,
-  `go/cmd/collector-security-alerts`) at every emission. Until core issues
-  a grant, the zero Grant is denied and `Collect` fails closed before any
-  provider contact.
+- Authorization is host-enforced at emission: the host issues the
+  core-owned-kind producer grant and denies kinds without one. The
+  satellite carries no authorization material and performs no grant
+  re-check.
 - `contract.go`, `request.go`, `config.go`, `handler.go`, `failure.go` —
   the SDK adapter: the manifest-matched contract (`Contract()`), the stdio
   request boundary (`ParseRequest`), activation parsing (targets plus the
-  host-delivered grant), and the claim-to-Result mapping
-  (`Handler.Handle`), including the fail-closed grant and deadline paths.
+  shared host-level limits stanza), and the claim-to-Result mapping
+  (`Handler.Handle`), including the fail-closed config and deadline paths.
 - `cmd/collector/` — the entrypoint: stdio serve plus the `seed`
   subcommand that installs the binary and manifest.
 - `manifest.yaml` — the component manifest (`dev.eshu.collector.security_alerts`
-  at `0.1.0`); `Dockerfile` — the static distroless image;
+  at `0.1.1`); `Dockerfile` — the static distroless image;
   `config.example.yaml` — the activation shape.
 
 ## Parity evidence
@@ -117,7 +116,7 @@ Postgres, graph, queue, lease, or workflow handle.
 go run ./cmd/collector < request.json > result.json
 ```
 
-A denied or missing producer grant fails closed as terminal
+A bad activation fails closed as terminal
 `invalid_config` before any provider contact; an unconfigured scope fails
 retryable with no facts. A claim arriving with no lease time left fails
 retryable as `claim_deadline_exceeded`. `github_app` targets are not served
@@ -172,16 +171,14 @@ same stable keys.
 ## Producer grants
 
 The emitted kind is core-owned, so the host refuses it without a live
-producer grant. Until the host defines grant delivery, the activation carries
-the core-issued grant verbatim under `config.grant` (see
-`config.example.yaml`); the collector re-checks the shape at the emission
-edge and fails closed without it. The grant holds no secret. A grant's scope
-is the collector kind (`security_alert`), not a feed. Core issues the grant
-at cutover (one per kind):
+producer grant. The host issues and enforces the grant at emission; the
+activation carries no authorization material (see `config.example.yaml`).
+A grant's scope is the collector kind (`security_alert`), not a feed. Core
+issues the grant at cutover (one per kind):
 
 ```sh
 eshu component grant dev.eshu.collector.security-alerts --component-home "$HOME_DIR" \
-  --version 0.1.0 --kind security_alert.repository_alert --schema-version 1.0.0 \
+  --version 0.1.1 --kind security_alert.repository_alert --schema-version 1.0.0 \
   --scope security_alert --expires-in 720h
 ```
 

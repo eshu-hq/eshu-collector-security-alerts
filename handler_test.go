@@ -94,22 +94,10 @@ func testClaim() sdk.Claim {
 }
 
 // testConfig returns the activation config every handler test serves: one
-// token_env repository target plus the host-delivered producer grant.
+// token_env repository target, no authorization material.
 func testConfig(t *testing.T) map[string]any {
 	t.Helper()
 
-	// The expiry sits one hour after the real clock: both the handler
-	// pre-check and Collect enforce the grant against time.Now, so a fixed
-	// test clock in the past would deny it either as expired (Collect) or as
-	// exceeding the maximum lifetime (the pre-check).
-	grant := map[string]any{
-		"producer_id": ProducerID,
-		"version":     "0.1.0",
-		"scope":       CollectorKind,
-		"kinds":       map[string]any{FactKindRepositoryAlert: []any{"1.0.0"}},
-		"expires_at":  time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-		"revoked":     false,
-	}
 	return map[string]any{
 		"targets": []any{map[string]any{
 			"provider":               "github_dependabot",
@@ -120,13 +108,10 @@ func testConfig(t *testing.T) map[string]any {
 			"repository_alert_limit": float64(25),
 			"max_pages":              float64(2),
 		}},
-		"grant": grant,
 	}
 }
 
 // testHandler returns a Handler wired to the stub client and a static env.
-// The clock is real: Collect enforces the grant against time.Now, so a fixed
-// past clock would deny a live grant as expired.
 func testHandler(env map[string]string, alerts []securityalert.GitHubDependabotAlert) Handler {
 	return Handler{
 		Getenv: func(key string) string { return env[key] },
@@ -165,10 +150,10 @@ func TestHandleServesOneValidatorCleanResult(t *testing.T) {
 	}
 }
 
-// TestHandleDeniesMissingGrantWithoutProviderContact fails closed with a
-// terminal invalid_config result when the host delivers no producer grant,
-// and never constructs a provider client.
-func TestHandleDeniesMissingGrantWithoutProviderContact(t *testing.T) {
+// TestHandleDeniesMissingTargetsWithoutProviderContact fails closed with a
+// terminal invalid_config result when the activation carries no targets,
+// and never constructs a provider client. No grant material is involved.
+func TestHandleDeniesMissingTargetsWithoutProviderContact(t *testing.T) {
 	t.Parallel()
 
 	contacted := false
@@ -181,7 +166,7 @@ func TestHandleDeniesMissingGrantWithoutProviderContact(t *testing.T) {
 		},
 	}
 	config := testConfig(t)
-	delete(config, "grant")
+	delete(config, "targets")
 	result := handler.Handle(context.Background(), Request{
 		ProtocolVersion: sdk.ProtocolVersionV1Alpha1,
 		Claim:           testClaim(),
@@ -189,7 +174,7 @@ func TestHandleDeniesMissingGrantWithoutProviderContact(t *testing.T) {
 		Config:          config,
 	})
 	if contacted {
-		t.Fatal("missing grant constructed a provider client; emission must fail closed first")
+		t.Fatal("missing targets constructed a provider client; emission must fail closed first")
 	}
 	if result.State != sdk.ResultTerminal {
 		t.Fatalf("State = %q, want terminal", result.State)

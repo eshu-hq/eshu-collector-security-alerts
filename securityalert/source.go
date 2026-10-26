@@ -11,8 +11,6 @@ import (
 
 	"github.com/eshu-hq/eshu-sdk/collector"
 	"github.com/eshu-hq/eshu-sdk/collector/transport"
-
-	"github.com/eshu-hq/eshu-collector-security-alerts/grant"
 )
 
 // Shard and retirement markers. The extracted producer never expands shards
@@ -168,19 +166,15 @@ func NewClaimedSource(config SourceConfig) (*ClaimedSource, error) {
 }
 
 // Collect binds one host claim to its configured target, fetches bounded
-// live metadata, and returns a collector-sdk/v1alpha1 Result. The grant is
-// enforced at every emission: without a usable core-issued grant Collect
-// fails closed before any provider contact. Provider failures return a
-// transport.ProviderFailure for host claim disposition; the producer never
-// decides retryable-vs-terminal claim fate itself.
+// live metadata, and returns a collector-sdk/v1alpha1 Result. Authorization
+// is host-enforced at emission, so Collect carries no grant material.
+// Provider failures return a transport.ProviderFailure for host claim
+// disposition; the producer never decides retryable-vs-terminal claim fate
+// itself.
 func (s *ClaimedSource) Collect(
 	ctx context.Context,
 	claim collector.Claim,
-	g grant.Grant,
 ) (collector.Result, error) {
-	if err := grant.Check(g, time.Now()); err != nil {
-		return collector.Result{}, err
-	}
 	if strings.TrimSpace(claim.InstanceID) != s.collectorInstanceID {
 		return collector.Result{}, fmt.Errorf(
 			"security alert work item collector_instance_id %q does not match source %q",

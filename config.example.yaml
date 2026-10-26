@@ -49,17 +49,11 @@ config:
       repository_alert_limit: 25
       max_pages: 2
       # source_uri: https://api.github.com/repos/example-org/example-repo/dependabot/alerts
-  # grant carries the host-delivered core issuance for this producer until
-  # the host defines grant delivery. It holds no secret. Core matches the
-  # producer, version, scope, kind coverage, and expiry at admission; the
-  # collector re-checks the shape at the emission edge and fails closed
-  # without it. The collector never mints one.
-  grant:
-    producer_id: dev.eshu.collector.security-alerts
-    version: 0.1.0
-    scope: security_alert
-    kinds:
-      security_alert.repository_alert:
-        - 1.0.0
-    expires_at: 2027-05-16T11:00:00Z
-    revoked: false
+  # limits carries the shared host-level limits stanza the activation always
+  # includes. Authorization is host-enforced at emission; the activation
+  # carries no authorization material.
+  limits:
+    maxRecordsPerClaim: 50000
+    maxPayloadBytes: 1048576
+    maxResultBytes: 3145728
+    claimTimeoutSeconds: 300

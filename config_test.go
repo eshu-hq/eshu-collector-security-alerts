@@ -6,7 +6,6 @@ package collector
 import (
 	"strings"
 	"testing"
-	"time"
 
 	sdk "github.com/eshu-hq/eshu-sdk/collector"
 )
@@ -24,18 +23,6 @@ func validTarget() map[string]any {
 	}
 }
 
-// liveGrant returns a grant object valid at time.Now.
-func liveGrant() map[string]any {
-	return map[string]any{
-		"producer_id": ProducerID,
-		"version":     "0.1.0",
-		"scope":       CollectorKind,
-		"kinds":       map[string]any{FactKindRepositoryAlert: []any{"1.0.0"}},
-		"expires_at":  time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-		"revoked":     false,
-	}
-}
-
 func parseConfig(t *testing.T, config map[string]any, env map[string]string) settings {
 	t.Helper()
 
@@ -47,22 +34,18 @@ func parseConfig(t *testing.T, config map[string]any, env map[string]string) set
 }
 
 // TestParseSettingsResolvesTokenEnv proves the happy path: one target with
-// its credential resolved from the environment and the grant carried through.
+// its credential resolved from the environment.
 func TestParseSettingsResolvesTokenEnv(t *testing.T) {
 	t.Parallel()
 
 	parsed := parseConfig(t, map[string]any{
 		"targets": []any{validTarget()},
-		"grant":   liveGrant(),
 	}, map[string]string{"GITHUB_TOKEN": "token-value"})
 	if len(parsed.targets) != 1 {
 		t.Fatalf("targets = %d, want 1", len(parsed.targets))
 	}
 	if parsed.targets[0].Token != "token-value" {
 		t.Fatal("target token was not resolved from the environment")
-	}
-	if parsed.grant.ProducerID != ProducerID {
-		t.Fatalf("grant producer = %q, want %q", parsed.grant.ProducerID, ProducerID)
 	}
 }
 
@@ -73,7 +56,6 @@ func TestParseSettingsRejectsUnresolvableToken(t *testing.T) {
 
 	_, err := parseSettings(map[string]any{
 		"targets": []any{validTarget()},
-		"grant":   liveGrant(),
 	}, func(string) string { return "" })
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
@@ -94,7 +76,6 @@ func TestParseSettingsRejectsGitHubAppOverStdio(t *testing.T) {
 	target["github_app_id_env"] = "GITHUB_APP_ID"
 	_, err := parseSettings(map[string]any{
 		"targets": []any{target},
-		"grant":   liveGrant(),
 	}, func(key string) string { return "credential-value" })
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
@@ -104,30 +85,71 @@ func TestParseSettingsRejectsGitHubAppOverStdio(t *testing.T) {
 	}
 }
 
-// TestParseSettingsRequiresTargetsAndGrant proves an activation without
-// targets or without the host-delivered grant fails before any client exists.
-func TestParseSettingsRequiresTargetsAndGrant(t *testing.T) {
+// TestParseSettingsRequiresTargets proves an activation without targets
+// fails before any client exists. No grant material is required: the host
+// enforces authorization at emission.
+func TestParseSettingsRequiresTargets(t *testing.T) {
 	t.Parallel()
 
-	if _, err := parseSettings(map[string]any{"grant": liveGrant()},
+	if _, err := parseSettings(map[string]any{},
 		func(string) string { return "x" }); err == nil {
 		t.Fatal("config without targets: parseSettings() error = nil, want non-nil")
 	}
-	if _, err := parseSettings(map[string]any{"targets": []any{validTarget()}},
-		func(string) string { return "x" }); err == nil {
-		t.Fatal("config without grant: parseSettings() error = nil, want non-nil")
+	parsed, err := parseSettings(map[string]any{"targets": []any{validTarget()}},
+		func(string) string { return "token-value" })
+	if err != nil {
+		t.Fatalf("config with targets but no grant: parseSettings() error = %v, want nil", err)
+	}
+	if len(parsed.targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(parsed.targets))
+	}
+}
+
+// TestParseSettingsAcceptsLiveActivationEnvelope proves the host contract:
+// the activation config block arrives verbatim, including the shared
+// host-level limits stanza, with no grant material. This mirrors the literal
+// ops-qa activation (eshu-hq/eshu#8866); rejecting it fails production closed.
+func TestParseSettingsAcceptsLiveActivationEnvelope(t *testing.T) {
+	t.Parallel()
+
+	getenv := func(key string) string {
+		if key == "GITHUB_TOKEN" {
+			return "secret-value"
+		}
+		return ""
+	}
+	parsed, err := parseSettings(map[string]any{
+		"targets": []any{
+			map[string]any{
+				"provider": "github_dependabot", "scope": "repository",
+				"scope_id":   "security-alert:github:boatsgroup/iac-eks-eshu",
+				"repository": "boatsgroup/iac-eks-eshu", "token_env": "GITHUB_TOKEN",
+				"max_pages": float64(5), "repository_alert_limit": float64(100),
+				"allowed_repositories": []any{"boatsgroup/iac-eks-eshu"},
+			},
+		},
+		"limits": map[string]any{
+			"maxRecordsPerClaim": float64(50000), "maxPayloadBytes": float64(1048576),
+			"maxResultBytes": float64(3145728), "claimTimeoutSeconds": float64(300),
+		},
+	}, getenv)
+	if err != nil {
+		t.Fatalf("parseSettings(live envelope) error = %v", err)
+	}
+	if len(parsed.targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(parsed.targets))
 	}
 }
 
 // TestParseSettingsRejectsUnknownKeys proves a typo in the activation fails
-// closed instead of silently running with defaults.
+// closed instead of silently running with defaults. The shared host-level
+// limits stanza is allowlisted; anything else unknown still fails.
 func TestParseSettingsRejectsUnknownKeys(t *testing.T) {
 	t.Parallel()
 
 	if _, err := parseSettings(map[string]any{
-		"targets": []any{validTarget()},
-		"grant":   liveGrant(),
-		"limits":  map[string]any{"max_pages": float64(2)},
+		"targets":  []any{validTarget()},
+		"typo_key": map[string]any{"max_pages": float64(2)},
 	}, func(string) string { return "x" }); err == nil {
 		t.Fatal("config with unknown key: parseSettings() error = nil, want non-nil")
 	}

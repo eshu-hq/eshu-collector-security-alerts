@@ -87,14 +87,6 @@ func claimJSON(t *testing.T, scopeID string) string {
 				"repository_alert_limit": float64(25),
 				"max_pages":              float64(2),
 			}},
-			"grant": map[string]any{
-				"producer_id": collector.ProducerID,
-				"version":     "0.1.0",
-				"scope":       collector.CollectorKind,
-				"kinds":       map[string]any{collector.FactKindRepositoryAlert: []any{"1.0.0"}},
-				"expires_at":  time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
-				"revoked":     false,
-			},
 		},
 	})
 	if err != nil {
