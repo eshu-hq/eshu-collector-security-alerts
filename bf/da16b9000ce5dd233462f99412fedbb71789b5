@@ -1,0 +1,32 @@
+.github/workflows/ci.yml
+  h_78a442cba0b3e6 8-10,15-16,21-26
+README.md
+  h_78a442cba0b3e6 56-60
+grant/grant.go
+  h_78a442cba0b3e6 97-102
+grant/grant_test.go
+  h_78a442cba0b3e6 79-93
+securityalert/client.go
+  h_78a442cba0b3e6 212,217-219,243,247,259,295,299,305-307,310,312
+securityalert/client_test.go
+  h_78a442cba0b3e6 264-299
+securityalert/envelope_golden_test.go
+  h_78a442cba0b3e6 13,16-25
+securityalert/source.go
+  h_78a442cba0b3e6 286,301-303,326,340,359-363,392
+securityalert/source_test.go
+  h_78a442cba0b3e6 255-428
+securityalert/target.go
+  h_78a442cba0b3e6 129-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfda16b9000ce5dd233462f99412fedbb71789b5",
+  "prompts": {},
+  "humans": {
+    "h_78a442cba0b3e6": {
+      "author": "Allen Sanabria <asanabria6910@gmail.com>"
+    }
+  }
+}
