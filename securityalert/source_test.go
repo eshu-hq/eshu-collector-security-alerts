@@ -252,6 +252,180 @@ func TestCollectRejectsUnknownScope(t *testing.T) {
 	}
 }
 
+// cancelOrgStubClient serves a truncated org read so Collect fans out,
+// then fails the per-repository read while the claim context is already
+// cancelled.
+type cancelOrgStubClient struct {
+	org GitHubDependabotAlertResult
+}
+
+func (s cancelOrgStubClient) ListRepositoryAlertsPages(
+	ctx context.Context,
+	repository string,
+	maxPages int,
+) (GitHubDependabotAlertResult, error) {
+	return GitHubDependabotAlertResult{}, GitHubDependabotError{
+		Message:   "fetch github dependabot alerts",
+		Operation: dependabotRepositoryAlertsOperation,
+	}
+}
+
+func (s cancelOrgStubClient) ListOrganizationAlertsPages(
+	ctx context.Context,
+	organization string,
+	maxPages int,
+) (GitHubDependabotAlertResult, error) {
+	return s.org, nil
+}
+
+func collectOrgTestClaim() collector.Claim {
+	claim := collectTestClaim()
+	claim.Scope = collector.Scope{ID: "security-alert:github:example-org", Kind: "security_alert"}
+	return claim
+}
+
+func TestCollectCancelledFanoutPropagatesError(t *testing.T) {
+	t.Parallel()
+
+	orgAlert := goldenFixtureAlert()
+	orgAlert.Repository = GitHubDependabotRepository{
+		FullName: "example-org/example-repo",
+		Name:     "example-repo",
+		Owner:    GitHubDependabotRepositoryOwner{Login: "example-org"},
+	}
+	source, err := NewClaimedSource(SourceConfig{
+		CollectorInstanceID: "security-alert-primary",
+		Targets: []TargetConfig{{
+			Provider:     ProviderGitHubDependabot,
+			Scope:        TargetScopeOrganization,
+			ScopeID:      "security-alert:github:example-org",
+			Organization: "example-org",
+			Token:        "token-value",
+			AllowedRepositories: []string{
+				"example-org/example-repo",
+			},
+			MaxPages: 1,
+		}},
+		ClientFactory: func(TargetConfig) (RepositoryAlertClient, error) {
+			return cancelOrgStubClient{org: GitHubDependabotAlertResult{
+				Alerts:       []GitHubDependabotAlert{orgAlert},
+				PagesFetched: 1,
+				Truncated:    true,
+				ObservedAt:   time.Date(2026, 5, 16, 11, 0, 0, 0, time.UTC),
+			}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := source.Collect(ctx, collectOrgTestClaim(), UsableTestGrant()); err == nil {
+		t.Error("Collect(cancelled fan-out) = nil, want the cancellation propagated as an error, not a partial success with zero facts")
+	}
+}
+
+func TestNewClaimedSourceRejectsTokenProviderOnTokenEnvTarget(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewClaimedSource(SourceConfig{
+		CollectorInstanceID: "security-alert-primary",
+		Targets: []TargetConfig{{
+			Provider:   ProviderGitHubDependabot,
+			Scope:      TargetScopeRepository,
+			ScopeID:    "security-alert:github:example-org/example-repo",
+			Repository: "example-org/example-repo",
+			Token:      "token-value",
+			AuthMode:   AuthModeTokenEnv,
+			AllowedRepositories: []string{
+				"example-org/example-repo",
+			},
+			TokenProvider: func(ctx context.Context) (string, error) {
+				return "stray-provider-token", nil
+			},
+		}},
+	})
+	if err == nil {
+		t.Error("NewClaimedSource(token_env with TokenProvider) = nil, want fail-closed rejection: the credential shapes never mix")
+	}
+}
+
+// countingMetrics records how many fetch observations one Collect attempt
+// produces.
+type countingMetrics struct {
+	fetches int
+}
+
+func (m *countingMetrics) RecordFetch(provider string, statusClass string, latency time.Duration) {
+	m.fetches++
+}
+
+func (m *countingMetrics) RecordRateLimited(provider string, count int) {}
+
+func (m *countingMetrics) RecordFactsEmitted(provider string, counts map[string]int64) {}
+
+func (m *countingMetrics) RecordTruncatedReads(provider string, operation string, count int) {}
+
+func (m *countingMetrics) RecordFanoutOutcome(provider string, outcome string, count int) {}
+
+type failingRepositoryClient struct{}
+
+func (failingRepositoryClient) ListRepositoryAlertsPages(
+	ctx context.Context,
+	repository string,
+	maxPages int,
+) (GitHubDependabotAlertResult, error) {
+	return GitHubDependabotAlertResult{}, GitHubDependabotError{
+		Message:   "fetch github dependabot alerts",
+		Operation: dependabotRepositoryAlertsOperation,
+	}
+}
+
+func (failingRepositoryClient) ListOrganizationAlertsPages(
+	ctx context.Context,
+	organization string,
+	maxPages int,
+) (GitHubDependabotAlertResult, error) {
+	return GitHubDependabotAlertResult{}, GitHubDependabotError{
+		Message:   "fetch github dependabot alerts",
+		Operation: dependabotOrganizationAlertsOperation,
+	}
+}
+
+func TestFailedCollectRecordsOneFetch(t *testing.T) {
+	t.Parallel()
+
+	recorder := &countingMetrics{}
+	source, err := NewClaimedSource(SourceConfig{
+		CollectorInstanceID: "security-alert-primary",
+		Targets: []TargetConfig{{
+			Provider:   ProviderGitHubDependabot,
+			Scope:      TargetScopeRepository,
+			ScopeID:    "security-alert:github:example-org/example-repo",
+			Repository: "example-org/example-repo",
+			Token:      "token-value",
+			AllowedRepositories: []string{
+				"example-org/example-repo",
+			},
+		}},
+		ClientFactory: func(TargetConfig) (RepositoryAlertClient, error) {
+			return failingRepositoryClient{}, nil
+		},
+		Metrics: recorder,
+	})
+	if err != nil {
+		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
+	}
+
+	if _, err := source.Collect(context.Background(), collectTestClaim(), UsableTestGrant()); err == nil {
+		t.Fatal("Collect(failing provider) = nil, want provider failure")
+	}
+	if recorder.fetches != 1 {
+		t.Errorf("RecordFetch calls = %d, want exactly 1 per failed Collect", recorder.fetches)
+	}
+}
+
 func TestCollectValidatesClaimBinding(t *testing.T) {
 	t.Parallel()
 

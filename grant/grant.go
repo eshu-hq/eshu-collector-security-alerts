@@ -94,6 +94,12 @@ func Check(g Grant, now time.Time) error {
 	if g.ExpiresAt.IsZero() || !now.Before(g.ExpiresAt) {
 		return errors.New("security alert producer grant denied: grant expired or missing expiry")
 	}
+	// MaxLifetime bounds grant duration: an expiry past now+MaxLifetime
+	// is a non-expiring grant in disguise and is denied. The bound
+	// itself stays usable, so UsableGrant(now) still passes Check at now.
+	if g.ExpiresAt.After(now.Add(MaxLifetime)) {
+		return errors.New("security alert producer grant denied: grant lifetime exceeds maximum")
+	}
 	for _, kind := range coveredKinds {
 		versions, ok := g.Kinds[kind]
 		if !ok {

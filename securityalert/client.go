@@ -209,10 +209,13 @@ func (c GitHubDependabotClient) paginateAlerts(
 	var out GitHubDependabotAlertResult
 	nextURL := firstURL
 	for page := 1; page <= maxPages; page++ {
-		alerts, rateLimit, next, err := c.listAlertsPage(ctx, nextURL, operation, token)
+		alerts, rateLimit, next, pageTruncated, err := c.listAlertsPage(ctx, nextURL, operation, token)
 		out.RateLimit = rateLimit
 		if err != nil {
 			return GitHubDependabotAlertResult{}, err
+		}
+		if pageTruncated {
+			out.Truncated = true
 		}
 		out.Alerts = append(out.Alerts, alerts...)
 		out.PagesFetched++
@@ -237,11 +240,11 @@ func (c GitHubDependabotClient) listAlertsPage(
 	endpoint string,
 	operation string,
 	token string,
-) ([]GitHubDependabotAlert, GitHubRateLimitInfo, string, error) {
+) ([]GitHubDependabotAlert, GitHubRateLimitInfo, string, bool, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, GitHubRateLimitInfo{}, "", GitHubDependabotError{
+		return nil, GitHubRateLimitInfo{}, "", false, GitHubDependabotError{
 			Message:   "build github dependabot request",
 			Operation: operation,
 			Cause:     err,
@@ -253,7 +256,7 @@ func (c GitHubDependabotClient) listAlertsPage(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, GitHubRateLimitInfo{}, "", GitHubDependabotError{
+		return nil, GitHubRateLimitInfo{}, "", false, GitHubDependabotError{
 			Message:   "fetch github dependabot alerts",
 			Operation: operation,
 			Cause: transport.HTTPError{
@@ -289,20 +292,24 @@ func (c GitHubDependabotClient) listAlertsPage(
 			failure.FailureClass() == GitHubDependabotFailureAuthDenied {
 			failure.FailureClassOverride = GitHubDependabotFailureRetryable
 		}
-		return nil, rateLimit, "", failure
+		return nil, rateLimit, "", false, failure
 	}
 	var alerts []GitHubDependabotAlert
 	if err := json.NewDecoder(resp.Body).Decode(&alerts); err != nil {
-		return nil, rateLimit, "", GitHubDependabotError{
+		return nil, rateLimit, "", false, GitHubDependabotError{
 			Message:   "decode github dependabot alerts",
 			Operation: operation,
 			Cause:     err,
 		}
 	}
+	// A page larger than the bound drops provider alerts: the page is
+	// truncated, and paginateAlerts carries that onto the result so the
+	// host never mistakes the clamped page for a complete read.
 	if len(alerts) > c.repositoryLimit {
 		alerts = alerts[:c.repositoryLimit]
+		return alerts, rateLimit, nextDependabotAlertsURL(endpoint, resp.Header.Get("Link")), true, nil
 	}
-	return alerts, rateLimit, nextDependabotAlertsURL(endpoint, resp.Header.Get("Link")), nil
+	return alerts, rateLimit, nextDependabotAlertsURL(endpoint, resp.Header.Get("Link")), false, nil
 }
 
 func (c GitHubDependabotClient) repositoryAlertsURL(repository string) (string, error) {

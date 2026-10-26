@@ -48,14 +48,6 @@ func classifiedProviderFailure(err error) transport.ProviderFailure {
 	)
 }
 
-func providerFailureClass(err error) string {
-	var providerErr GitHubDependabotError
-	if isProviderError(err, &providerErr) {
-		return providerErr.FailureClass()
-	}
-	return GitHubDependabotFailureRetryable
-}
-
 func isProviderError(err error, target *GitHubDependabotError) bool {
 	for err != nil {
 		if e, ok := err.(GitHubDependabotError); ok {
@@ -133,6 +125,13 @@ func validateTarget(target TargetConfig) (TargetConfig, error) {
 	case AuthModeTokenEnv:
 		if target.Token == "" {
 			return TargetConfig{}, fmt.Errorf("token is required")
+		}
+		// The two credential shapes never mix on one target: a stray
+		// provider would silently flip 401 semantics from terminal to
+		// retryable (client.go infers appAuth from its presence), so a
+		// static-PAT target carrying one fails closed here.
+		if target.TokenProvider != nil {
+			return TargetConfig{}, fmt.Errorf("token_provider must be empty when auth_mode is %q", AuthModeTokenEnv)
 		}
 		if target.GitHubAppID != "" || target.GitHubAppInstallationID != "" || target.GitHubAppPrivateKey != "" {
 			return TargetConfig{}, fmt.Errorf("github_app credentials must be empty when auth_mode is %q", AuthModeTokenEnv)

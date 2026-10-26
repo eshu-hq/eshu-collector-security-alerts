@@ -261,6 +261,42 @@ func TestResolveTokenUsesProviderPerCall(t *testing.T) {
 	}
 }
 
+func TestListRepositoryAlertsMarksTruncatedWhenPageExceedsLimit(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		overLimit := make([]GitHubDependabotAlert, 4)
+		for i := range overLimit {
+			overLimit[i].Number = i + 1
+			overLimit[i].State = "open"
+		}
+		raw, err := json.Marshal(overLimit)
+		if err != nil {
+			t.Errorf("marshal over-limit page: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(server.Close)
+	client := NewGitHubDependabotClient(GitHubDependabotClientConfig{
+		BaseURL:              server.URL,
+		Token:                "token-value",
+		AllowedRepositories:  []string{"example-org/example-repo"},
+		RepositoryAlertLimit: 2,
+	})
+
+	result, err := client.ListRepositoryAlertsPages(context.Background(), "example-org/example-repo", 1)
+	if err != nil {
+		t.Fatalf("ListRepositoryAlertsPages() error = %v, want nil", err)
+	}
+	if len(result.Alerts) != 2 {
+		t.Errorf("len(Alerts) = %d, want clamped to limit 2", len(result.Alerts))
+	}
+	if !result.Truncated {
+		t.Error("Truncated = false, want true: the per-page clamp dropped provider alerts")
+	}
+}
+
 func TestRateLimitMetadataParsed(t *testing.T) {
 	t.Parallel()
 

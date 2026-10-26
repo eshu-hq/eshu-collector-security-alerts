@@ -53,10 +53,11 @@ GOPROXY=proxy.golang.org go list -m github.com/eshu-hq/eshu-sdk/factschema@v0.1.
   `TestExtractionPrepClaimIDNamespace` ports the `security-alert-claim-`
   namespace case.
 - Stable keys: `identity.StableID(kind, identity)` shares the in-tree
-  scheme and is byte-stable with it. Independent oracle: the golden test
-  pins the exact stable key and wire payload emitted by the in-tree
-  constructor for the canonical fixture
-  (`TestGoldenStableKeyAndPayload`).
+  scheme and is byte-stable with it. Self-consistency pin: the golden test
+  pins the transcribed stable key and wire payload for the canonical fixture
+  (`TestGoldenStableKeyAndPayload`); the in-tree oracle source is cited in
+  that test, and the vectors stay in sync by hand until regeneration is
+  automated.
 - Contract payloads: `securityalert/v1` struct fields are identical
   between the in-tree `sdk/go/factschema` source and the pinned module,
   and the same `EncodeSecurityAlertRepositoryAlert` entry point merges

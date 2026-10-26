@@ -10,11 +10,19 @@ import (
 	"time"
 )
 
-// Golden vectors generated from the in-tree
+// Golden vectors transcribed from the in-tree
 // NewGitHubDependabotAlertEnvelope for the canonical fixture alert
 // (security-alert:github:example-org/example-repo, alert 42,
-// generation-9). The port must reproduce the stable key and the wire
-// payload byte-for-byte; any divergence fails here, not in production.
+// generation-9). Oracle: eshu-hq/eshu
+// go/internal/collector/securityalerts/envelope.go
+// (func NewGitHubDependabotAlertEnvelope; census locked in
+// eshu-hq/eshu#9162). Regenerate by running that constructor against
+// the fixture below and copying the stable key and wire payload here.
+//
+// Until regeneration is automated, this test pins self-consistency
+// with that transcription, not live byte-identity with the in-tree
+// vectors: a constant mistyped at port time would still pass here, so
+// keep the vectors in sync by hand on every envelope change.
 const (
 	goldenStableKey = "b670abea59577b18bca99651ad8f3da352c97d7afa2ae19970d19fcf3273ec4d"
 	goldenPayload   = `{"collector_instance_id":"collector-security-alerts","correlation_anchors":["CVE-2026-0001","GHSA-abcd-1234","github_dependabot:security-alert:github:example-org/example-repo:42","npm://registry.npmjs.org/@scope/left-pad"],"created_at":"2026-05-20T12:00:00Z","cve_ids":["CVE-2026-0001"],"cvss":{"score":9.8,"vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},"cwes":[{"cwe_id":"CWE-79","name":"Cross-site Scripting"}],"dependency_scope":"runtime","description":"Synthetic advisory description","dismissed_at":"","ecosystem":"npm","epss":{"percentage":"0.721","percentile":"0.981"},"fixed_at":"","ghsa_ids":["GHSA-abcd-1234"],"manifest_path":"package-lock.json","package_id":"npm://registry.npmjs.org/@scope/left-pad","package_name":"@scope/left-pad","patched_version":"1.2.3","provider":"github_dependabot","provider_alert_id":"github_dependabot:security-alert:github:example-org/example-repo:42","provider_alert_number":42,"provider_state":"open","relationship":"direct","repository_id":"security-alert:github:example-org/example-repo","severity":"critical","source_url":"https://github.com/example-org/example-repo/security/dependabot/42","summary":"Synthetic advisory","updated_at":"2026-05-23T10:15:00Z","vulnerable_range":"\u003c1.2.3"}`

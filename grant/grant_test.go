@@ -76,6 +76,21 @@ func TestCheckDeniesUncoveredKindOrVersion(t *testing.T) {
 	}
 }
 
+func TestCheckDeniesExpiryBeyondMaxLifetime(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	farFuture := UsableGrant(now)
+	farFuture.ExpiresAt = now.Add(100 * 365 * 24 * time.Hour)
+	if err := Check(farFuture, now); err == nil {
+		t.Error("Check(ExpiresAt = now+100y) = nil, want denial: MaxLifetime bounds grant duration, no non-expiring grants")
+	}
+	atBound := UsableGrant(now)
+	if err := Check(atBound, now); err != nil {
+		t.Errorf("Check(ExpiresAt = now+MaxLifetime) error = %v, want nil: the documented bound itself stays usable", err)
+	}
+}
+
 func TestCoveredKindsReturnsCopy(t *testing.T) {
 	t.Parallel()
 

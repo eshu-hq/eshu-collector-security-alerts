@@ -283,14 +283,13 @@ func (s *ClaimedSource) collectTarget(
 	if !target.config.IsOrganizationScope() || !result.Truncated {
 		return singleReadCollection(result), nil
 	}
-	return s.fanOutOrganization(ctx, target, result), nil
+	return s.fanOutOrganization(ctx, target, result)
 }
 
 func (s *ClaimedSource) fetchTarget(
 	ctx context.Context,
 	target targetRuntime,
 ) (GitHubDependabotAlertResult, error) {
-	startedAt := time.Now()
 	var result GitHubDependabotAlertResult
 	var err error
 	if target.config.IsOrganizationScope() {
@@ -299,7 +298,9 @@ func (s *ClaimedSource) fetchTarget(
 		result, err = target.client.ListRepositoryAlertsPages(ctx, target.config.Repository, target.config.MaxPages)
 	}
 	if err != nil {
-		s.recordFetch(target.config, providerFailureClass(err), startedAt)
+		// One provider request produces one fetch observation: Collect
+		// records the classified failure, so recording here too would
+		// double-count every failed fetch.
 		return GitHubDependabotAlertResult{}, err
 	}
 	return result, nil
@@ -322,7 +323,7 @@ func (s *ClaimedSource) fanOutOrganization(
 	ctx context.Context,
 	target targetRuntime,
 	org GitHubDependabotAlertResult,
-) alertCollection {
+) (alertCollection, error) {
 	repositories := organizationFanoutRepositories(target.config)
 	orgCoverage := repositoryAlertCollectionCoverageFromResult(org)
 	collection := alertCollection{
@@ -336,7 +337,7 @@ func (s *ClaimedSource) fanOutOrganization(
 		// An allowlist with no repository of the organization yields the
 		// truncated single read, its digest, and the org-window page-limit
 		// coverage instead of a complete-looking claim.
-		return singleReadCollection(org)
+		return singleReadCollection(org), nil
 	}
 	reads := make(map[string]GitHubDependabotAlertResult, len(repositories))
 	// stopOutcome is set by the first read failure that is neither not_found
@@ -355,7 +356,11 @@ func (s *ClaimedSource) fanOutOrganization(
 			result, err := target.client.ListRepositoryAlertsPages(ctx, repository, target.config.MaxPages)
 			switch {
 			case err != nil && ctx.Err() != nil:
-				return alertCollection{alerts: nil, truncated: true, coverage: orgCoverage}
+				// A cancelled claim fails the whole claim: returning the
+				// provider error lets Collect classify it for host
+				// disposition instead of reporting a partial success
+				// with zero facts on a claim that did not run.
+				return alertCollection{}, err
 			case err != nil:
 				outcome, stopOutcome = fanoutFailureOutcome(err)
 			default:
@@ -384,7 +389,7 @@ func (s *ClaimedSource) fanOutOrganization(
 		}
 	}
 	collection.alerts = mergeFanoutAlerts(target.config, repositories, reads, collection.fanoutOutcomes, org.Alerts)
-	return collection
+	return collection, nil
 }
 
 // envelopes assembles one SDK fact per alert of the merged collection.
