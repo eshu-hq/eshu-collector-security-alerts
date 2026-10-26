@@ -1,0 +1,65 @@
+# Example component activation config for the security-alert collector. Copy
+# it, replace the placeholder scope and repository, and point the
+# *_env entries at real credentials. It holds no secrets: *_env entries NAME
+# environment variables the worker process exports; their values never appear
+# here, in facts, in logs, or in statuses.
+#
+# Cutover identity. When this activation replaces the in-tree security-alert
+# collector, these values must equal the in-tree ones, or every stable fact
+# key and the payload's collector_instance_id change:
+#   host.scope.id        = the in-tree target's scope_id
+#   host.scope.kind      = security_alert
+#   host.sourceSystem    = the in-tree source system (security_alert)
+#   activation instance id (--instance) = the in-tree collector instance id
+# The values below are placeholders. Read the real ones from the live in-tree
+# configuration; do not invent new ones.
+host:
+  # Source system recorded on every fact. Match the claim the coordinator plans.
+  sourceSystem: security_alert
+  scope:
+    # One activation covers the security-alert targets below. The claim's
+    # scope id selects the target; scope ids are part of every stable fact
+    # key, so choose them once and keep them.
+    id: security-alert:github:example-org/example-repo
+    kind: security_alert
+process:
+  command: ./collector
+  args:
+    - --sdk-stdio
+  # A large organization fan-out can return more than the host's default
+  # 4 MiB stdout cap. Raise this together with per-claim expectations; the
+  # collector fails retryable with claim_deadline_exceeded rather than let
+  # the host drop an oversized result.
+  stdout_limit_bytes: 67108864
+config:
+  targets:
+    - provider: github_dependabot
+      scope: repository
+      scope_id: security-alert:github:example-org/example-repo
+      repository: example-org/example-repo
+      # token_env NAMES an environment variable the worker exports; its value
+      # never enters facts, logs, or statuses. Static-PAT targets need no
+      # provider: github_app targets are not served over stdio (installation
+      # token minting is host-owned and no mint callback crosses the request
+      # boundary).
+      token_env: GITHUB_TOKEN
+      allowed_repositories:
+        - example-org/example-repo
+      api_base_url: https://api.github.com
+      repository_alert_limit: 25
+      max_pages: 2
+      # source_uri: https://api.github.com/repos/example-org/example-repo/dependabot/alerts
+  # grant carries the host-delivered core issuance for this producer until
+  # the host defines grant delivery. It holds no secret. Core matches the
+  # producer, version, scope, kind coverage, and expiry at admission; the
+  # collector re-checks the shape at the emission edge and fails closed
+  # without it. The collector never mints one.
+  grant:
+    producer_id: dev.eshu.collector.security-alerts
+    version: 0.1.0
+    scope: security_alert
+    kinds:
+      security_alert.repository_alert:
+        - 1.0.0
+    expires_at: 2027-05-16T11:00:00Z
+    revoked: false
