@@ -1,0 +1,48 @@
+Dockerfile
+  h_78a442cba0b3e6 1-24
+README.md
+  h_78a442cba0b3e6 47-56,108-213
+cmd/collector/main.go
+  h_78a442cba0b3e6 1-120
+cmd/collector/main_test.go
+  h_78a442cba0b3e6 1-331
+cmd/collector/seed.go
+  h_78a442cba0b3e6 1-184
+config.example.yaml
+  h_78a442cba0b3e6 1-65
+config.go
+  h_78a442cba0b3e6 1-169
+config_test.go
+  h_78a442cba0b3e6 1-162
+contract.go
+  h_78a442cba0b3e6 1-53
+doc.go
+  h_78a442cba0b3e6 1-13
+failure.go
+  h_78a442cba0b3e6 1-95
+handler.go
+  h_78a442cba0b3e6 1-117
+handler_test.go
+  h_78a442cba0b3e6 1-265
+manifest.yaml
+  h_78a442cba0b3e6 1-28
+manifest_embed.go
+  h_78a442cba0b3e6 1-13
+manifest_test.go
+  h_78a442cba0b3e6 1-230
+request.go
+  h_78a442cba0b3e6 1-109
+request_test.go
+  h_78a442cba0b3e6 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d3e885e0a0a802143e176d7ee65aa1b687d73d7",
+  "prompts": {},
+  "humans": {
+    "h_78a442cba0b3e6": {
+      "author": "Allen Sanabria <asanabria6910@gmail.com>"
+    }
+  }
+}
