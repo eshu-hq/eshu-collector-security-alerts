@@ -122,7 +122,11 @@ retryable with no facts. A claim arriving with no lease time left fails
 retryable as `claim_deadline_exceeded`. `github_app` targets are not served
 over stdio: installation-token minting is host-owned and no mint callback
 crosses the request boundary, so they fail closed at config parse.
-Static-PAT (`token_env`) targets need no provider.
+Static-PAT (`token_env`) targets need no provider. `host_minted` targets
+spend the per-claim `host_github_app_token` stanza (`{token, scope_id}`)
+the host delivers at the top level of the activation config: the token lands
+only on `host_minted` targets, and a missing, empty, or claim-scope-mismatched
+stanza fails closed as terminal `invalid_config` before any provider contact.
 
 The collector writes one JSON diagnostic line per claim to stderr for local
 runs and tests; the host's process runner drops the text. The line carries

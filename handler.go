@@ -59,7 +59,7 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 	started := h.now()
 	claim := request.Claim
 
-	parsed, err := parseSettings(request.Config, h.getenv)
+	parsed, err := parseSettings(request.Config, h.getenv, claim.Scope.ID)
 	if err != nil {
 		h.logLine(claim, FailureInvalidConfig, "")
 		return terminalResult(claim, started, FailureInvalidConfig)

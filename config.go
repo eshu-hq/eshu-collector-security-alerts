@@ -44,20 +44,53 @@ type limitsJSON struct {
 	ClaimTimeoutSeconds int `json:"claimTimeoutSeconds"`
 }
 
+// hostGitHubAppTokenKey is the top-level activation config key carrying the
+// per-claim host-minted credential: {"token": ..., "scope_id": ...}. It is
+// extracted before target parsing so the DisallowUnknownFields target decode
+// never sees it.
+const hostGitHubAppTokenKey = "host_github_app_token"
+
+// hostAppToken is the extracted per-claim host-minted credential. Token is
+// the only value that may reach a provider request; errors and logs name the
+// key, never the value.
+type hostAppToken struct {
+	// Token is the host-minted credential, trimmed of surrounding
+	// whitespace. Empty means no usable credential arrived.
+	Token string
+	// ScopeID is the claim scope the host minted the credential for.
+	ScopeID string
+	// Present reports whether the host stanza arrived at all (even an empty
+	// one), distinguishing a missing stanza from an empty credential.
+	Present bool
+}
+
 // settings is the parsed activation: the producer targets. The host
 // delivers the activation config block verbatim, including its shared
-// limits stanza; authorization material never arrives here because
-// core-owned-kind authorization is host-enforced at emission.
+// limits stanza and, for host_minted targets, the per-claim host-minted
+// credential; core-owned-kind authorization material never arrives here
+// because authorization is host-enforced at emission.
 type settings struct {
 	targets []securityalert.TargetConfig
 }
 
 // parseSettings decodes the activation config into producer targets. The
-// claim's instance id becomes the producer's collector identity. Credential
-// values never enter errors: a missing token names the variable, never its
-// content.
-func parseSettings(config map[string]any, getenv func(string) string) (settings, error) {
-	raw, err := json.Marshal(config)
+// claim's instance id becomes the producer's collector identity, and the
+// claim scope id binds the per-claim host-minted credential to this claim.
+// Credential values never enter errors: a missing token names the variable
+// or key, never its content.
+func parseSettings(config map[string]any, getenv func(string) string, claimScopeID string) (settings, error) {
+	host, err := extractHostAppToken(config)
+	if err != nil {
+		return settings{}, err
+	}
+	rest := make(map[string]any, len(config))
+	for key, value := range config {
+		if key == hostGitHubAppTokenKey {
+			continue
+		}
+		rest[key] = value
+	}
+	raw, err := json.Marshal(rest)
 	if err != nil {
 		return settings{}, fmt.Errorf("encode config: %w", err)
 	}
@@ -75,7 +108,7 @@ func parseSettings(config map[string]any, getenv func(string) string) (settings,
 	}
 	targets := make([]securityalert.TargetConfig, 0, len(decoded.Targets))
 	for i, target := range decoded.Targets {
-		mapped, err := mapTarget(target, getenv)
+		mapped, err := mapTarget(target, getenv, host, claimScopeID)
 		if err != nil {
 			return settings{}, fmt.Errorf("targets[%d]: %w", i, err)
 		}
@@ -86,12 +119,45 @@ func parseSettings(config map[string]any, getenv func(string) string) (settings,
 	}, nil
 }
 
-// mapTarget resolves one configured target against the process environment,
-// mirroring the in-tree claimed runtime mapping. A static token_env target
-// resolves its credential once at startup. A github_app target fails closed
-// here: installation-token minting is host-owned and no mint callback crosses
-// the stdio boundary, so the stdio entrypoint cannot serve one.
-func mapTarget(target targetJSON, getenv func(string) string) (securityalert.TargetConfig, error) {
+// extractHostAppToken pulls the per-claim host-minted credential out of the
+// top-level activation config, independent of the {targets, limits} decode.
+// A missing (or null) stanza is not an error here: targets that need it fail
+// closed in mapTarget, while static targets ignore it. A present stanza with
+// the wrong shape fails closed without carrying credential material.
+func extractHostAppToken(config map[string]any) (hostAppToken, error) {
+	raw, ok := config[hostGitHubAppTokenKey]
+	if !ok || raw == nil {
+		return hostAppToken{}, nil
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return hostAppToken{}, fmt.Errorf("encode %s: %w", hostGitHubAppTokenKey, err)
+	}
+	var decoded struct {
+		Token   string `json:"token"`
+		ScopeID string `json:"scope_id"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return hostAppToken{}, fmt.Errorf("decode %s: %s", hostGitHubAppTokenKey, decodeReason(err))
+	}
+	return hostAppToken{
+		Token:   strings.TrimSpace(decoded.Token),
+		ScopeID: strings.TrimSpace(decoded.ScopeID),
+		Present: true,
+	}, nil
+}
+
+// mapTarget resolves one configured target against the process environment
+// and the per-claim host-minted credential, mirroring the in-tree claimed
+// runtime mapping. A static token_env target resolves its credential once at
+// startup. A host_minted target spends the host stanza credential, bound to
+// the claim scope id, and must carry no credential env reference of its own.
+// A github_app target fails closed here: installation-token minting is
+// host-owned and no mint callback crosses the stdio boundary, so the stdio
+// entrypoint cannot serve one.
+func mapTarget(target targetJSON, getenv func(string) string, host hostAppToken, claimScopeID string) (securityalert.TargetConfig, error) {
 	authMode := strings.ToLower(strings.TrimSpace(target.AuthMode))
 	if authMode == "" {
 		authMode = securityalert.AuthModeTokenEnv
@@ -119,6 +185,33 @@ func mapTarget(target targetJSON, getenv func(string) string) (securityalert.Tar
 			Organization:         strings.Trim(target.Organization, "/"),
 			Token:                token,
 			AuthMode:             securityalert.AuthModeTokenEnv,
+			AllowedRepositories:  cleanStrings(target.AllowedRepositories),
+			APIBaseURL:           strings.TrimRight(strings.TrimSpace(target.APIBaseURL), "/"),
+			RepositoryAlertLimit: target.RepositoryAlertLimit,
+			MaxPages:             target.MaxPages,
+			SourceURI:            strings.TrimSpace(firstNonBlank(target.SourceURI, target.APIBaseURL)),
+		}, nil
+	case securityalert.AuthModeHostMinted:
+		if strings.TrimSpace(target.TokenEnv) != "" ||
+			strings.TrimSpace(target.GitHubAppIDEnv) != "" ||
+			strings.TrimSpace(target.GitHubAppInstallationIDEnv) != "" ||
+			strings.TrimSpace(target.GitHubAppPrivateKeyEnv) != "" {
+			return securityalert.TargetConfig{}, fmt.Errorf("token_env and github_app env references must be empty when auth_mode is %q", securityalert.AuthModeHostMinted)
+		}
+		if !host.Present || host.Token == "" {
+			return securityalert.TargetConfig{}, fmt.Errorf("host_github_app_token did not resolve a credential for auth_mode %q", securityalert.AuthModeHostMinted)
+		}
+		if scope := strings.TrimSpace(claimScopeID); scope == "" || host.ScopeID != scope {
+			return securityalert.TargetConfig{}, fmt.Errorf("host_github_app_token is not scoped to the claim scope")
+		}
+		return securityalert.TargetConfig{
+			Provider:             strings.TrimSpace(target.Provider),
+			Scope:                strings.TrimSpace(target.Scope),
+			ScopeID:              strings.TrimSpace(target.ScopeID),
+			Repository:           strings.Trim(target.Repository, "/"),
+			Organization:         strings.Trim(target.Organization, "/"),
+			Token:                host.Token,
+			AuthMode:             securityalert.AuthModeHostMinted,
 			AllowedRepositories:  cleanStrings(target.AllowedRepositories),
 			APIBaseURL:           strings.TrimRight(strings.TrimSpace(target.APIBaseURL), "/"),
 			RepositoryAlertLimit: target.RepositoryAlertLimit,

@@ -62,10 +62,11 @@ type SourceConfig struct {
 // and fans the result out into per-repository facts.
 //
 // AuthMode selects the credential shape: AuthModeTokenEnv (the default) uses
-// the static Token resolved once at startup, while AuthModeGitHubApp mints an
-// installation token per claim through the host-supplied TokenProvider. The
-// two shapes never mix on one target, and the minted token is never stored
-// here.
+// the static Token resolved once at startup, AuthModeHostMinted uses the
+// static Token the satellite receives per claim from the host, while
+// AuthModeGitHubApp mints an installation token per claim through the
+// host-supplied TokenProvider. The shapes never mix on one target, and a
+// minted token is never stored here.
 type TargetConfig struct {
 	Provider                string
 	Scope                   string

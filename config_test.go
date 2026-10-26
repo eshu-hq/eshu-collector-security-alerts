@@ -26,7 +26,7 @@ func validTarget() map[string]any {
 func parseConfig(t *testing.T, config map[string]any, env map[string]string) settings {
 	t.Helper()
 
-	parsed, err := parseSettings(config, func(key string) string { return env[key] })
+	parsed, err := parseSettings(config, func(key string) string { return env[key] }, hostMintedScope)
 	if err != nil {
 		t.Fatalf("parseSettings() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestParseSettingsRejectsUnresolvableToken(t *testing.T) {
 
 	_, err := parseSettings(map[string]any{
 		"targets": []any{validTarget()},
-	}, func(string) string { return "" })
+	}, func(string) string { return "" }, hostMintedScope)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
 	}
@@ -76,7 +76,7 @@ func TestParseSettingsRejectsGitHubAppOverStdio(t *testing.T) {
 	target["github_app_id_env"] = "GITHUB_APP_ID"
 	_, err := parseSettings(map[string]any{
 		"targets": []any{target},
-	}, func(key string) string { return "credential-value" })
+	}, func(key string) string { return "credential-value" }, hostMintedScope)
 	if err == nil {
 		t.Fatal("parseSettings() error = nil, want non-nil")
 	}
@@ -92,11 +92,11 @@ func TestParseSettingsRequiresTargets(t *testing.T) {
 	t.Parallel()
 
 	if _, err := parseSettings(map[string]any{},
-		func(string) string { return "x" }); err == nil {
+		func(string) string { return "x" }, hostMintedScope); err == nil {
 		t.Fatal("config without targets: parseSettings() error = nil, want non-nil")
 	}
 	parsed, err := parseSettings(map[string]any{"targets": []any{validTarget()}},
-		func(string) string { return "token-value" })
+		func(string) string { return "token-value" }, hostMintedScope)
 	if err != nil {
 		t.Fatalf("config with targets but no grant: parseSettings() error = %v, want nil", err)
 	}
@@ -132,7 +132,7 @@ func TestParseSettingsAcceptsLiveActivationEnvelope(t *testing.T) {
 			"maxRecordsPerClaim": float64(50000), "maxPayloadBytes": float64(1048576),
 			"maxResultBytes": float64(3145728), "claimTimeoutSeconds": float64(300),
 		},
-	}, getenv)
+	}, getenv, "security-alert:github:boatsgroup/iac-eks-eshu")
 	if err != nil {
 		t.Fatalf("parseSettings(live envelope) error = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestParseSettingsRejectsUnknownKeys(t *testing.T) {
 	if _, err := parseSettings(map[string]any{
 		"targets":  []any{validTarget()},
 		"typo_key": map[string]any{"max_pages": float64(2)},
-	}, func(string) string { return "x" }); err == nil {
+	}, func(string) string { return "x" }, hostMintedScope); err == nil {
 		t.Fatal("config with unknown key: parseSettings() error = nil, want non-nil")
 	}
 }
