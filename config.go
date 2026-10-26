@@ -5,6 +5,7 @@ package collector
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -73,6 +74,35 @@ type settings struct {
 	targets []securityalert.TargetConfig
 }
 
+// configError is a bounded activation-config failure. The message names
+// keys, never credential values; the reason is a stable machine-readable
+// code for the diagnostic line, so an operator can tell a missing stanza
+// from a wrong-scope mint without ever seeing a secret.
+type configError struct {
+	reason string
+	msg    string
+}
+
+func (e *configError) Error() string { return e.msg }
+
+// host failure reason codes carried on configError for the diagnostic line.
+const (
+	reasonMissingHostToken  = "missing_host_token"
+	reasonHostTokenMismatch = "host_token_scope_mismatch"
+	reasonMalformedHostKey  = "malformed_host_token"
+	reasonNoClaimTarget     = "no_claim_scoped_target"
+)
+
+// configFailureReason recovers the bounded reason from a parseSettings
+// failure for the diagnostic line. Unclassified failures carry no reason.
+func configFailureReason(err error) string {
+	var cerr *configError
+	if errors.As(err, &cerr) {
+		return cerr.reason
+	}
+	return ""
+}
+
 // parseSettings decodes the activation config into producer targets. The
 // claim's instance id becomes the producer's collector identity, and the
 // claim scope id binds the per-claim host-minted credential to this claim.
@@ -108,15 +138,38 @@ func parseSettings(config map[string]any, getenv func(string) string, claimScope
 	}
 	targets := make([]securityalert.TargetConfig, 0, len(decoded.Targets))
 	for i, target := range decoded.Targets {
+		// Only the claim's host_minted target may receive the per-claim
+		// credential: a host_minted target scoped elsewhere is dropped from
+		// this claim's run instead of inheriting a token minted for a
+		// different scope. Collect looks up targets by claim scope, so the
+		// dropped target is never spent here; the claim for its own scope
+		// keeps it with its own stanza.
+		if hostMintedForOtherScope(target, claimScopeID) {
+			continue
+		}
 		mapped, err := mapTarget(target, getenv, host, claimScopeID)
 		if err != nil {
 			return settings{}, fmt.Errorf("targets[%d]: %w", i, err)
 		}
 		targets = append(targets, mapped)
 	}
+	if len(targets) == 0 {
+		return settings{}, &configError{reason: reasonNoClaimTarget, msg: "no configured target serves the claim scope"}
+	}
 	return settings{
 		targets: targets,
 	}, nil
+}
+
+// hostMintedForOtherScope reports whether a target spends per-claim host
+// credentials for a scope other than the claim's. Static targets are never
+// dropped: their credential resolves from the process environment and carries
+// no per-claim binding.
+func hostMintedForOtherScope(target targetJSON, claimScopeID string) bool {
+	if strings.ToLower(strings.TrimSpace(target.AuthMode)) != securityalert.AuthModeHostMinted {
+		return false
+	}
+	return strings.TrimSpace(target.ScopeID) != strings.TrimSpace(claimScopeID)
 }
 
 // extractHostAppToken pulls the per-claim host-minted credential out of the
@@ -140,7 +193,7 @@ func extractHostAppToken(config map[string]any) (hostAppToken, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decoded); err != nil {
-		return hostAppToken{}, fmt.Errorf("decode %s: %s", hostGitHubAppTokenKey, decodeReason(err))
+		return hostAppToken{}, &configError{reason: reasonMalformedHostKey, msg: fmt.Sprintf("decode %s: %s", hostGitHubAppTokenKey, decodeReason(err))}
 	}
 	return hostAppToken{
 		Token:   strings.TrimSpace(decoded.Token),
@@ -199,10 +252,10 @@ func mapTarget(target targetJSON, getenv func(string) string, host hostAppToken,
 			return securityalert.TargetConfig{}, fmt.Errorf("token_env and github_app env references must be empty when auth_mode is %q", securityalert.AuthModeHostMinted)
 		}
 		if !host.Present || host.Token == "" {
-			return securityalert.TargetConfig{}, fmt.Errorf("host_github_app_token did not resolve a credential for auth_mode %q", securityalert.AuthModeHostMinted)
+			return securityalert.TargetConfig{}, &configError{reason: reasonMissingHostToken, msg: fmt.Sprintf("host_github_app_token did not resolve a credential for auth_mode %q", securityalert.AuthModeHostMinted)}
 		}
 		if scope := strings.TrimSpace(claimScopeID); scope == "" || host.ScopeID != scope {
-			return securityalert.TargetConfig{}, fmt.Errorf("host_github_app_token is not scoped to the claim scope")
+			return securityalert.TargetConfig{}, &configError{reason: reasonHostTokenMismatch, msg: "host_github_app_token is not scoped to the claim scope"}
 		}
 		return securityalert.TargetConfig{
 			Provider:             strings.TrimSpace(target.Provider),

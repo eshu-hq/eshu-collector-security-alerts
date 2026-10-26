@@ -16,12 +16,16 @@ import (
 )
 
 func defaultClientFactory(target TargetConfig) (RepositoryAlertClient, error) {
+	// A host_minted token is an hourly installation token the host mints
+	// fresh per claim, exactly like a github_app mint: an alert-read 401
+	// marks expiry and stays retryable so the next claim mints fresh, unlike
+	// a static PAT 401 which denies terminally until the operator rotates it.
 	return NewGitHubDependabotClient(GitHubDependabotClientConfig{
 		BaseURL:              target.APIBaseURL,
 		Token:                target.Token,
 		AllowedRepositories:  target.AllowedRepositories,
 		RepositoryAlertLimit: target.RepositoryAlertLimit,
-		AppAuth:              target.AuthMode == AuthModeGitHubApp,
+		AppAuth:              target.AuthMode == AuthModeGitHubApp || target.AuthMode == AuthModeHostMinted,
 		TokenProvider:        target.TokenProvider,
 	}), nil
 }

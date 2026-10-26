@@ -61,7 +61,7 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 
 	parsed, err := parseSettings(request.Config, h.getenv, claim.Scope.ID)
 	if err != nil {
-		h.logLine(claim, FailureInvalidConfig, "")
+		h.logLine(claim, FailureInvalidConfig, "", configFailureReason(err))
 		return terminalResult(claim, started, FailureInvalidConfig)
 	}
 	source, err := securityalert.NewClaimedSource(securityalert.SourceConfig{
@@ -71,7 +71,7 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 		Now:                 h.Now,
 	})
 	if err != nil {
-		h.logLine(claim, FailureInvalidConfig, "")
+		h.logLine(claim, FailureInvalidConfig, "", configFailureReason(err))
 		return terminalResult(claim, started, FailureInvalidConfig)
 	}
 	result, err := source.Collect(ctx, claim)
@@ -80,32 +80,37 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 	}
 	var providerFailure transport.ProviderFailure
 	if errors.As(err, &providerFailure) {
-		h.logLine(claim, providerFailure.FailureClass(), providerFailure.FailureOperation())
+		h.logLine(claim, providerFailure.FailureClass(), providerFailure.FailureOperation(), "")
 		return providerResult(claim, started, providerFailure)
 	}
 	if isDeadlineExceeded(err) {
-		h.logLine(claim, FailureClaimDeadline, "")
+		h.logLine(claim, FailureClaimDeadline, "", "")
 		return failureResult(claim, started, FailureClaimDeadline, false, 0)
 	}
-	h.logLine(claim, FailureInvalidEvidence, "")
+	h.logLine(claim, FailureInvalidEvidence, "", "")
 	return terminalResult(claim, started, FailureInvalidEvidence)
 }
 
 // logLine writes one bounded diagnostic line: the claim identity the host
-// already knows plus the failure vocabulary. It never carries a credential,
-// a URL, or a provider body.
-func (h Handler) logLine(claim sdk.Claim, class, operation string) {
+// already knows plus the failure vocabulary and, for config failures, the
+// bounded reason code that distinguishes the fail-closed cause. It never
+// carries a credential, a URL, or a provider body.
+func (h Handler) logLine(claim sdk.Claim, class, operation, reason string) {
 	if h.Log == nil {
 		return
 	}
-	line, err := json.Marshal(map[string]any{
+	entry := map[string]any{
 		"component_id":  claim.ComponentID,
 		"instance_id":   claim.InstanceID,
 		"scope_id":      claim.Scope.ID,
 		"work_item_id":  claim.WorkItemID,
 		"failure_class": class,
 		"operation":     operation,
-	})
+	}
+	if reason != "" {
+		entry["reason"] = reason
+	}
+	line, err := json.Marshal(entry)
 	if err != nil {
 		return
 	}

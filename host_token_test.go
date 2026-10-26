@@ -280,3 +280,118 @@ func TestHandleDeniesHostMintedScopeMismatchWithoutProviderContact(t *testing.T)
 		t.Fatalf("ValidateResult() error = %v", err)
 	}
 }
+
+// TestParseSettingsInjectsOnlyClaimScopedHostMintedTarget proves per-target
+// scope gating: in a two-target activation the claim's target receives the
+// host token and the other target is dropped from this claim's run, so a
+// claim-scoped credential never reaches a non-serving target even in memory.
+func TestParseSettingsInjectsOnlyClaimScopedHostMintedTarget(t *testing.T) {
+	t.Parallel()
+
+	other := hostMintedTarget()
+	other["scope_id"] = "security-alert:github:example-org/other-repo"
+	other["repository"] = "example-org/other-repo"
+	other["allowed_repositories"] = []any{"example-org/other-repo"}
+	config := map[string]any{
+		"targets": []any{hostMintedTarget(), other},
+		"host_github_app_token": map[string]any{
+			"token":    "host-minted-token",
+			"scope_id": hostMintedScope,
+		},
+	}
+	parsed, err := parseSettings(config, func(string) string { return "" }, hostMintedScope)
+	if err != nil {
+		t.Fatalf("parseSettings() error = %v, want nil", err)
+	}
+	if len(parsed.targets) != 1 {
+		t.Fatalf("targets = %d, want 1 (only the claim-scoped target)", len(parsed.targets))
+	}
+	if parsed.targets[0].ScopeID != hostMintedScope {
+		t.Fatalf("target scope = %q, want %q", parsed.targets[0].ScopeID, hostMintedScope)
+	}
+	if parsed.targets[0].Token != "host-minted-token" {
+		t.Fatal("claim-scoped target did not receive the injected host token")
+	}
+}
+
+// TestParseSettingsRejectsClaimScopeWithoutHostMintedTarget fails a claim
+// closed when every host_minted target serves another scope: nothing in this
+// claim's run may spend a credential minted for a different scope.
+func TestParseSettingsRejectsClaimScopeWithoutHostMintedTarget(t *testing.T) {
+	t.Parallel()
+
+	other := hostMintedTarget()
+	other["scope_id"] = "security-alert:github:example-org/other-repo"
+	other["repository"] = "example-org/other-repo"
+	other["allowed_repositories"] = []any{"example-org/other-repo"}
+	config := map[string]any{
+		"targets": []any{other},
+		"host_github_app_token": map[string]any{
+			"token":    "host-minted-token",
+			"scope_id": hostMintedScope,
+		},
+	}
+	_, err := parseSettings(config, func(string) string { return "" }, hostMintedScope)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want fail-closed with no claim-scoped target")
+	}
+}
+
+// TestParseSettingsRejectsMalformedHostStanzaOnStaticActivation pins the
+// fail-closed stanza decode for activations that do not need it: a static
+// token_env activation carrying a malformed host stanza fails before any
+// provider contact, naming only the key.
+func TestParseSettingsRejectsMalformedHostStanzaOnStaticActivation(t *testing.T) {
+	t.Parallel()
+
+	target := map[string]any{
+		"provider":               "github_dependabot",
+		"scope_id":               hostMintedScope,
+		"repository":             "example-org/example-repo",
+		"token_env":              "STATIC_PAT",
+		"allowed_repositories":   []any{"example-org/example-repo"},
+		"repository_alert_limit": float64(25),
+		"max_pages":              float64(2),
+	}
+	config := map[string]any{
+		"targets":               []any{target},
+		"host_github_app_token": map[string]any{"token": float64(123), "scope_id": hostMintedScope},
+	}
+	_, err := parseSettings(config, func(string) string { return "static-pat" }, hostMintedScope)
+	if err == nil {
+		t.Fatal("parseSettings() error = nil, want fail-closed on malformed host stanza")
+	}
+	if !strings.Contains(err.Error(), "host_github_app_token") {
+		t.Fatalf("error = %q, want it to name the host stanza key", err.Error())
+	}
+}
+
+// TestHandleLogsHostTokenFailureReason proves the diagnostic line
+// distinguishes host-token fail-closed reasons: a missing stanza on a
+// host_minted target logs reason missing_host_token with no credential
+// material.
+func TestHandleLogsHostTokenFailureReason(t *testing.T) {
+	t.Parallel()
+
+	var logLines strings.Builder
+	handler := Handler{
+		Getenv: func(string) string { return "" },
+		Now:    time.Now,
+		Log:    &logLines,
+	}
+	result := handler.Handle(context.Background(), Request{
+		ProtocolVersion: sdk.ProtocolVersionV1Alpha1,
+		Claim:           testClaim(),
+		Contract:        Contract(),
+		Config:          map[string]any{"targets": []any{hostMintedTarget()}},
+	})
+	if result.State != sdk.ResultTerminal {
+		t.Fatalf("State = %q, want terminal", result.State)
+	}
+	if failureClass(result) != FailureInvalidConfig {
+		t.Fatalf("failure class = %q, want %q", failureClass(result), FailureInvalidConfig)
+	}
+	if !strings.Contains(logLines.String(), `"reason":"missing_host_token"`) {
+		t.Fatalf("diagnostic log = %q, want reason missing_host_token", logLines.String())
+	}
+}
