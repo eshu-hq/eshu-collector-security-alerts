@@ -1,0 +1,38 @@
+README.md
+  h_78a442cba0b3e6 42-45,49-50,54,119,174-177,181
+config.example.yaml
+  h_78a442cba0b3e6 52-59
+config.go
+  h_78a442cba0b3e6 37-44,47-50,55-58,66
+config_test.go
+  h_78a442cba0b3e6 37,88-91,94,98-140,145-146,151-152
+contract.go
+  h_78a442cba0b3e6 28-30
+doc.go
+  h_78a442cba0b3e6 7-11
+failure.go
+  h_78a442cba0b3e6 17-18,54-55
+handler.go
+  h_78a442cba0b3e6 54-57,77
+handler_test.go
+  h_78a442cba0b3e6 97,153-156,169,177
+manifest.yaml
+  h_78a442cba0b3e6 7
+manifest_test.go
+  h_78a442cba0b3e6 188-189
+securityalert/source.go
+  h_78a442cba0b3e6 169-173
+securityalert/source_test.go
+  h_78a442cba0b3e6 91,171,208,282,379,409,414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "718172bf2be73f794118b278182f326ec9d09bfd",
+  "prompts": {},
+  "humans": {
+    "h_78a442cba0b3e6": {
+      "author": "Allen Sanabria <asanabria6910@gmail.com>"
+    }
+  }
+}
