@@ -1,0 +1,28 @@
+apiVersion: eshu.dev/v1alpha1
+kind: ComponentPackage
+metadata:
+  id: dev.eshu.collector.security_alerts
+  name: Security alert collector
+  publisher: eshu-hq
+  version: 0.1.0
+spec:
+  compatibleCore: ">=0.0.5 <0.2.0"
+  componentType: collector
+  collectorKinds:
+    - security_alert
+  runtime:
+    sdkProtocol: collector-sdk/v1alpha1
+    adapter: process
+  artifacts:
+    - platform: linux/amd64
+      image: ghcr.io/eshu-hq/eshu-collector-security-alerts@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  emittedFacts:
+    - kind: security_alert.repository_alert
+      payloadSchemaRef: security_alert.repository_alert
+      schemaVersions:
+        - 1.0.0
+      sourceConfidence:
+        - reported
+  # No telemetry section: the collector emits no metrics (eshu-hq/eshu#9032),
+  # so it declares no component-owned metric prefix. The claim result's
+  # failure class is the operator signal.
