@@ -51,7 +51,7 @@ GOPROXY=proxy.golang.org go list -m github.com/eshu-hq/eshu-sdk/factschema@v0.1.
 - `cmd/collector/` — the entrypoint: stdio serve plus the `seed`
   subcommand that installs the binary and manifest.
 - `manifest.yaml` — the component manifest (`dev.eshu.collector.security_alerts`
-  at `0.1.1`); `Dockerfile` — the static distroless image;
+  at `0.1.2`); `Dockerfile` — the static distroless image;
   `config.example.yaml` — the activation shape.
 
 ## Parity evidence
@@ -182,7 +182,7 @@ issues the grant at cutover (one per kind):
 
 ```sh
 eshu component grant dev.eshu.collector.security-alerts --component-home "$HOME_DIR" \
-  --version 0.1.1 --kind security_alert.repository_alert --schema-version 1.0.0 \
+  --version 0.1.2 --kind security_alert.repository_alert --schema-version 1.0.0 \
   --scope security_alert --expires-in 720h
 ```
 
