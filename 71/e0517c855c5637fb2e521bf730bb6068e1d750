@@ -1,0 +1,58 @@
+.github/workflows/ci.yml
+  h_78a442cba0b3e6 1-19
+README.md
+  h_78a442cba0b3e6 1-96
+go.mod
+  h_78a442cba0b3e6 1-8
+go.sum
+  h_78a442cba0b3e6 1-16
+grant/grant.go
+  h_78a442cba0b3e6 1-128
+grant/grant_test.go
+  h_78a442cba0b3e6 1-90
+securityalert/claimid.go
+  h_78a442cba0b3e6 1-30
+securityalert/client.go
+  h_78a442cba0b3e6 1-423
+securityalert/client_error.go
+  h_78a442cba0b3e6 1-200
+securityalert/client_test.go
+  h_78a442cba0b3e6 1-288
+securityalert/coverage.go
+  h_78a442cba0b3e6 1-299
+securityalert/doc.go
+  h_78a442cba0b3e6 1-17
+securityalert/envelope.go
+  h_78a442cba0b3e6 1-355
+securityalert/envelope_golden_test.go
+  h_78a442cba0b3e6 1-111
+securityalert/extraction_prep_mirror_test.go
+  h_78a442cba0b3e6 1-159
+securityalert/identity.go
+  h_78a442cba0b3e6 1-382
+securityalert/metrics.go
+  h_78a442cba0b3e6 1-95
+securityalert/redaction.go
+  h_78a442cba0b3e6 1-96
+securityalert/schema.go
+  h_78a442cba0b3e6 1-53
+securityalert/source.go
+  h_78a442cba0b3e6 1-443
+securityalert/source_test.go
+  h_78a442cba0b3e6 1-285
+securityalert/target.go
+  h_78a442cba0b3e6 1-492
+securityalert/types.go
+  h_78a442cba0b3e6 1-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71e0517c855c5637fb2e521bf730bb6068e1d750",
+  "prompts": {},
+  "humans": {
+    "h_78a442cba0b3e6": {
+      "author": "Allen Sanabria <asanabria6910@gmail.com>"
+    }
+  }
+}
