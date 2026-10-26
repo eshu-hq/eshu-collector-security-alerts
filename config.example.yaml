@@ -41,7 +41,11 @@ config:
       # never enters facts, logs, or statuses. Static-PAT targets need no
       # provider: github_app targets are not served over stdio (installation
       # token minting is host-owned and no mint callback crosses the request
-      # boundary).
+      # boundary). For host-minted credentials instead, set
+      # `auth_mode: host_minted`, leave token_env and every github_app_*_env
+      # entry empty, and let the host deliver the per-claim
+      # `host_github_app_token` stanza ({token, scope_id}) at the top level
+      # of the activation config.
       token_env: GITHUB_TOKEN
       allowed_repositories:
         - example-org/example-repo

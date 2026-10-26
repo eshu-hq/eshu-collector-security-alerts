@@ -30,6 +30,12 @@ const (
 	// AuthModeGitHubApp mints an installation token per claim through the
 	// host-supplied TokenProvider.
 	AuthModeGitHubApp = "github_app"
+	// AuthModeHostMinted spends the host-minted token the satellite receives
+	// per claim over stdio. It is a static bearer like AuthModeTokenEnv at
+	// the provider layer; only the delivery differs (per-claim host stanza
+	// instead of a process-environment variable), so the two shapes never
+	// mix with token_env or github_app references on one target.
+	AuthModeHostMinted = "host_minted"
 )
 
 // EnvelopeContext carries the fact boundary fields for one provider

@@ -16,12 +16,16 @@ import (
 )
 
 func defaultClientFactory(target TargetConfig) (RepositoryAlertClient, error) {
+	// A host_minted token is an hourly installation token the host mints
+	// fresh per claim, exactly like a github_app mint: an alert-read 401
+	// marks expiry and stays retryable so the next claim mints fresh, unlike
+	// a static PAT 401 which denies terminally until the operator rotates it.
 	return NewGitHubDependabotClient(GitHubDependabotClientConfig{
 		BaseURL:              target.APIBaseURL,
 		Token:                target.Token,
 		AllowedRepositories:  target.AllowedRepositories,
 		RepositoryAlertLimit: target.RepositoryAlertLimit,
-		AppAuth:              target.AuthMode == AuthModeGitHubApp,
+		AppAuth:              target.AuthMode == AuthModeGitHubApp || target.AuthMode == AuthModeHostMinted,
 		TokenProvider:        target.TokenProvider,
 	}), nil
 }
@@ -122,19 +126,19 @@ func validateTarget(target TargetConfig) (TargetConfig, error) {
 		return TargetConfig{}, fmt.Errorf("scope_id must not contain the reserved %q marker", retirementMarker)
 	}
 	switch target.AuthMode {
-	case AuthModeTokenEnv:
+	case AuthModeTokenEnv, AuthModeHostMinted:
 		if target.Token == "" {
 			return TargetConfig{}, fmt.Errorf("token is required")
 		}
-		// The two credential shapes never mix on one target: a stray
+		// The credential shapes never mix on one target: a stray
 		// provider would silently flip 401 semantics from terminal to
 		// retryable (client.go infers appAuth from its presence), so a
-		// static-PAT target carrying one fails closed here.
+		// static-credential target carrying one fails closed here.
 		if target.TokenProvider != nil {
-			return TargetConfig{}, fmt.Errorf("token_provider must be empty when auth_mode is %q", AuthModeTokenEnv)
+			return TargetConfig{}, fmt.Errorf("token_provider must be empty when auth_mode is %q", target.AuthMode)
 		}
 		if target.GitHubAppID != "" || target.GitHubAppInstallationID != "" || target.GitHubAppPrivateKey != "" {
-			return TargetConfig{}, fmt.Errorf("github_app credentials must be empty when auth_mode is %q", AuthModeTokenEnv)
+			return TargetConfig{}, fmt.Errorf("github_app credentials must be empty when auth_mode is %q", target.AuthMode)
 		}
 	case AuthModeGitHubApp:
 		if target.Token != "" {
