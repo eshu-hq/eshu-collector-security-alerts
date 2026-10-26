@@ -10,19 +10,7 @@ import (
 	"time"
 
 	"github.com/eshu-hq/eshu-sdk/collector"
-
-	"github.com/eshu-hq/eshu-collector-security-alerts/grant"
 )
-
-// UsableTestGrant returns a valid host-delivered grant for tests.
-// Production grants are issued by core, never minted here.
-func UsableTestGrant() grant.Grant {
-	return grant.UsableGrant(time.Now())
-}
-
-func zeroGrant() grant.Grant {
-	return grant.Grant{}
-}
 
 type stubRepositoryClient struct {
 	alerts []GitHubDependabotAlert
@@ -100,7 +88,7 @@ func TestCollectEmitsValidatorCleanResult(t *testing.T) {
 		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
 	}
 
-	result, err := source.Collect(context.Background(), collectTestClaim(), UsableTestGrant())
+	result, err := source.Collect(context.Background(), collectTestClaim())
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -180,7 +168,7 @@ func TestCollectPartialReadStaysPartial(t *testing.T) {
 		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
 	}
 
-	result, err := source.Collect(context.Background(), collectTestClaim(), UsableTestGrant())
+	result, err := source.Collect(context.Background(), collectTestClaim())
 	if err != nil {
 		t.Fatalf("Collect() error = %v, want nil", err)
 	}
@@ -192,36 +180,6 @@ func TestCollectPartialReadStaysPartial(t *testing.T) {
 	}
 	if _, err := validatorForTest().ValidateResult(result); err != nil {
 		t.Fatalf("ValidateResult(partial) error = %v, want nil", err)
-	}
-}
-
-func TestCollectRequiresGrant(t *testing.T) {
-	t.Parallel()
-
-	source, err := NewClaimedSource(SourceConfig{
-		CollectorInstanceID: "security-alert-primary",
-		Targets: []TargetConfig{{
-			Provider:            ProviderGitHubDependabot,
-			Scope:               TargetScopeRepository,
-			ScopeID:             "security-alert:github:example-org/example-repo",
-			Repository:          "example-org/example-repo",
-			Token:               "token-value",
-			AllowedRepositories: []string{"example-org/example-repo"},
-		}},
-		ClientFactory: func(TargetConfig) (RepositoryAlertClient, error) {
-			return stubRepositoryClient{}, nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
-	}
-	if _, err := source.Collect(context.Background(), collectTestClaim(), zeroGrant()); err == nil {
-		t.Error("Collect(zero grant) = nil, want fail-closed denial before any provider contact")
-	}
-	revoked := UsableTestGrant()
-	revoked.Revoked = true
-	if _, err := source.Collect(context.Background(), collectTestClaim(), revoked); err == nil {
-		t.Error("Collect(revoked grant) = nil, want fail-closed denial")
 	}
 }
 
@@ -247,7 +205,7 @@ func TestCollectRejectsUnknownScope(t *testing.T) {
 	}
 	claim := collectTestClaim()
 	claim.Scope.ID = "security-alert:github:example-org#shard-0"
-	if _, err := source.Collect(context.Background(), claim, UsableTestGrant()); err == nil {
+	if _, err := source.Collect(context.Background(), claim); err == nil {
 		t.Error("Collect(shard scope) = nil, want unconfigured-scope failure")
 	}
 }
@@ -321,7 +279,7 @@ func TestCollectCancelledFanoutPropagatesError(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := source.Collect(ctx, collectOrgTestClaim(), UsableTestGrant()); err == nil {
+	if _, err := source.Collect(ctx, collectOrgTestClaim()); err == nil {
 		t.Error("Collect(cancelled fan-out) = nil, want the cancellation propagated as an error, not a partial success with zero facts")
 	}
 }
@@ -418,7 +376,7 @@ func TestFailedCollectRecordsOneFetch(t *testing.T) {
 		t.Fatalf("NewClaimedSource() error = %v, want nil", err)
 	}
 
-	if _, err := source.Collect(context.Background(), collectTestClaim(), UsableTestGrant()); err == nil {
+	if _, err := source.Collect(context.Background(), collectTestClaim()); err == nil {
 		t.Fatal("Collect(failing provider) = nil, want provider failure")
 	}
 	if recorder.fetches != 1 {
@@ -448,12 +406,12 @@ func TestCollectValidatesClaimBinding(t *testing.T) {
 	}
 	foreign := collectTestClaim()
 	foreign.SourceSystem = "grafana"
-	if _, err := source.Collect(context.Background(), foreign, UsableTestGrant()); err == nil {
+	if _, err := source.Collect(context.Background(), foreign); err == nil {
 		t.Error("Collect(foreign source_system) = nil, want binding rejection")
 	}
 	blankGen := collectTestClaim()
 	blankGen.GenerationID = ""
-	if _, err := source.Collect(context.Background(), blankGen, UsableTestGrant()); err == nil {
+	if _, err := source.Collect(context.Background(), blankGen); err == nil {
 		t.Error("Collect(blank generation) = nil, want rejection")
 	}
 }

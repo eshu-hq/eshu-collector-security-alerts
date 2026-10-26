@@ -7,9 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/eshu-hq/eshu-collector-security-alerts/grant"
 	"github.com/eshu-hq/eshu-collector-security-alerts/securityalert"
 )
 
@@ -36,31 +34,28 @@ type targetJSON struct {
 	SourceURI                  string   `json:"source_uri"`
 }
 
-// grantJSON is the wire shape of the host-delivered core issuance the
-// activation carries until the host defines grant delivery. It carries no
-// secret: core matches the producer, version, scope, kind coverage, and
-// expiry at admission, and this edge re-checks the shape before any provider
-// contact. The collector never mints one.
-type grantJSON struct {
-	ProducerID string              `json:"producer_id"`
-	Version    string              `json:"version"`
-	Scope      string              `json:"scope"`
-	Kinds      map[string][]string `json:"kinds"`
-	ExpiresAt  time.Time           `json:"expires_at"`
-	Revoked    bool                `json:"revoked"`
+// limitsJSON is the shared host-level limits stanza. It carries no
+// satellite-side consumer today; it is accepted so the verbatim envelope
+// parses and host-side enforcement stays the single owner.
+type limitsJSON struct {
+	MaxRecordsPerClaim  int `json:"maxRecordsPerClaim"`
+	MaxPayloadBytes     int `json:"maxPayloadBytes"`
+	MaxResultBytes      int `json:"maxResultBytes"`
+	ClaimTimeoutSeconds int `json:"claimTimeoutSeconds"`
 }
 
-// settings is the parsed activation: the producer targets plus the
-// host-delivered grant the emission edge enforces.
+// settings is the parsed activation: the producer targets. The host
+// delivers the activation config block verbatim, including its shared
+// limits stanza; authorization material never arrives here because
+// core-owned-kind authorization is host-enforced at emission.
 type settings struct {
 	targets []securityalert.TargetConfig
-	grant   grant.Grant
 }
 
-// parseSettings decodes the activation config into producer targets and the
-// host-delivered grant. The claim's instance id becomes the producer's
-// collector identity. Credential values never enter errors: a missing token
-// names the variable, never its content.
+// parseSettings decodes the activation config into producer targets. The
+// claim's instance id becomes the producer's collector identity. Credential
+// values never enter errors: a missing token names the variable, never its
+// content.
 func parseSettings(config map[string]any, getenv func(string) string) (settings, error) {
 	raw, err := json.Marshal(config)
 	if err != nil {
@@ -68,7 +63,7 @@ func parseSettings(config map[string]any, getenv func(string) string) (settings,
 	}
 	var decoded struct {
 		Targets []targetJSON `json:"targets"`
-		Grant   *grantJSON   `json:"grant"`
+		Limits  *limitsJSON  `json:"limits"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
@@ -86,20 +81,8 @@ func parseSettings(config map[string]any, getenv func(string) string) (settings,
 		}
 		targets = append(targets, mapped)
 	}
-	if decoded.Grant == nil {
-		return settings{}, fmt.Errorf("config grant is required: the host must deliver the core-issued producer grant")
-	}
-	mapped := decoded.Grant
 	return settings{
 		targets: targets,
-		grant: grant.Grant{
-			ProducerID: mapped.ProducerID,
-			Version:    mapped.Version,
-			Scope:      mapped.Scope,
-			Kinds:      mapped.Kinds,
-			ExpiresAt:  mapped.ExpiresAt,
-			Revoked:    mapped.Revoked,
-		},
 	}, nil
 }
 

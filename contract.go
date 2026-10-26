@@ -6,7 +6,6 @@ package collector
 import (
 	sdk "github.com/eshu-hq/eshu-sdk/collector"
 
-	"github.com/eshu-hq/eshu-collector-security-alerts/grant"
 	"github.com/eshu-hq/eshu-collector-security-alerts/securityalert"
 )
 
@@ -26,10 +25,9 @@ const (
 	// FactKindRepositoryAlert identifies one repository-scoped provider
 	// security alert. It is the only kind this producer may emit.
 	FactKindRepositoryAlert = securityalert.KindRepositoryAlert
-	// ProducerID is the first-party producer identity the host-delivered
-	// grant must name. Production grants are issued by core, never minted
-	// here.
-	ProducerID = grant.ProducerID
+	// ProducerID is the first-party producer identity. Authorization is
+	// host-enforced at emission; the satellite carries no grant material.
+	ProducerID = "dev.eshu.collector.security_alerts"
 )
 
 // FactKinds returns every fact kind this collector may emit, in the order the
