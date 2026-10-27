@@ -160,6 +160,44 @@ func digestPinned(image string) bool {
 // --image-ref` instead (README, "Image and seeding").
 const placeholderDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
+// TestDigestPinnedBoundary pins the hex predicate down: every range edge on
+// both sides must classify correctly, so a one-sided mutant (e.g. `>` to
+// `>=`) fails this test instead of hiding behind the all-zeros placeholder.
+func TestDigestPinnedBoundary(t *testing.T) {
+	t.Parallel()
+
+	pin := func(digest string) string {
+		return "ghcr.io/eshu-hq/x@sha256:" + digest
+	}
+	valid := []string{
+		"0000000000000000000000000000000000000000000000000000000000000000",
+		"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+		"0123456789abcdefABCDEF0123456789abcdefABCDEF0123456789abcdefABCD",
+	}
+	for _, d := range valid {
+		if !digestPinned(pin(d)) {
+			t.Errorf("digestPinned(%q) = false, want true", d)
+		}
+	}
+	invalid := []string{
+		// Just outside each accepted range.
+		"000000000000000000000000000000000000000000000000000000000000000g",
+		"000000000000000000000000000000000000000000000000000000000000000G",
+		"000000000000000000000000000000000000000000000000000000000000000/",
+		"000000000000000000000000000000000000000000000000000000000000000:",
+		"000000000000000000000000000000000000000000000000000000000000000`",
+		"00000000000000000000000000000000000000000000000000000000000000",
+		"00000000000000000000000000000000000000000000000000000000000000000",
+		"ghcr.io/eshu-hq/x:latest",
+	}
+	for _, image := range invalid {
+		if digestPinned(image) {
+			t.Errorf("digestPinned(%q) = true, want false", image)
+		}
+	}
+}
+
 // isPlaceholderImage reports whether image names the placeholder digest.
 func isPlaceholderImage(image string) bool {
 	return strings.HasSuffix(image, "@"+placeholderDigest)

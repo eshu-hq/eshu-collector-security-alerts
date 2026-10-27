@@ -230,18 +230,22 @@ jobs:
 
   gosec:
     needs: changes
-    if: always() && (github.event_name != 'pull_request')
+    if: always() && (needs.changes.outputs.go == 'true' || needs.changes.outputs.misc == 'true' || needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      security-events: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: ${{ env.GO_VERSION_FILE }}
-      - name: gosec SARIF (advisory; gate on finding count, not exit code)
+      # Blocking on PR/push: the false-positive rate here is measured (2 sites
+      # dispositioned per-site in this PR, count 0), so findings fail the lane
+      # and triage happens in the open. Schedule stays summary-only (the weekly
+      # issue flow owns those findings). Gate on finding count, not exit code
+      # (Go 1.26 type-check artifact exits nonzero with zero findings).
+      - name: gosec (finding count gates; SARIF below on non-PR events)
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@${{ env.GOSEC_VERSION }}
           gosec -no-fail -fmt=sarif -out=gosec.sarif ./...
@@ -250,7 +254,11 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ] && [ "$count" -gt 0 ]; then
             echo "Gosec reported $count findings on the weekly schedule; triage via the Security tab." >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ "${{ github.event_name }}" != "schedule" ] && [ "$count" -gt 0 ]; then
+            echo "FAIL: gosec reported $count findings; triage in the open with per-site #nosec reasons, never blanket-exclude."; exit 1
+          fi
       - name: upload SARIF
+        if: github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
         with:
           sarif_file: gosec.sarif

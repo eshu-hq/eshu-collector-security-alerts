@@ -41,7 +41,7 @@ and other test-read fixtures run `test` only; shell scripts run `shell`
 only (plus `test` when a test executes the script; no scripts exist today);
 `Dockerfile` runs `image` (build, no push); `go.mod`/`go.sum`
 changes add `govulncheck`; pushes to `main` and the weekly schedule add
-`govulncheck` and advisory `gosec` (SARIF to the Security tab). Workflow
+`govulncheck` and `gosec` (finding count gates PR/push lanes after the 2-site FP measurement in the gates PR; SARIF to the Security tab on non-PR events). Workflow
 changes run `actionlint` plus the Go lanes. `ci-complete` is the only
 context the ruleset requires: it passes when needed lanes passed and
 fails when one failed; legitimately skipped lanes are fine.
