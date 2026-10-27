@@ -45,6 +45,7 @@ type limitsJSON struct {
 	ClaimTimeoutSeconds int `json:"claimTimeoutSeconds"`
 }
 
+// #nosec G101 -- the flagged string is a config key name, not credential material.
 // hostGitHubAppTokenKey is the top-level activation config key carrying the
 // per-claim host-minted credential: {"token": ..., "scope_id": ...}. It is
 // extracted before target parsing so the DisallowUnknownFields target decode
