@@ -212,3 +212,5 @@ limited to maintainers.
 3. Copy the `ghcr.io/eshu-hq/eshu-collector-security-alerts@sha256:<digest>`
    reference from the job summary into the activation's `seed.image`. The
    deployment stamps it into the manifest with `collector seed --image-ref`.
+
+<!-- skip-proof: docs-only lane-selection probe, no rendered change -->
