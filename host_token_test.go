@@ -270,47 +270,14 @@ func TestHandleDeniesHostMintedScopeMismatchWithoutProviderContact(t *testing.T)
 	if result.State != sdk.ResultTerminal {
 		t.Fatalf("State = %q, want terminal", result.State)
 	}
-	if failureClass(result) != FailureInvalidConfig {
-		t.Fatalf("failure class = %q, want %q", failureClass(result), FailureInvalidConfig)
+	if got := failureClass(result); got != "invalid_config.host_token_scope_mismatch" {
+		t.Fatalf("failure class = %q, want %q", got, "invalid_config.host_token_scope_mismatch")
 	}
 	if strings.Contains(logLines.String(), tokenSentinel) {
 		t.Fatal("diagnostic log carries host credential material")
 	}
 	if _, err := sdk.NewValidator(Contract()).ValidateResult(result); err != nil {
 		t.Fatalf("ValidateResult() error = %v", err)
-	}
-}
-
-// TestParseSettingsInjectsOnlyClaimScopedHostMintedTarget proves per-target
-// scope gating: in a two-target activation the claim's target receives the
-// host token and the other target is dropped from this claim's run, so a
-// claim-scoped credential never reaches a non-serving target even in memory.
-func TestParseSettingsInjectsOnlyClaimScopedHostMintedTarget(t *testing.T) {
-	t.Parallel()
-
-	other := hostMintedTarget()
-	other["scope_id"] = "security-alert:github:example-org/other-repo"
-	other["repository"] = "example-org/other-repo"
-	other["allowed_repositories"] = []any{"example-org/other-repo"}
-	config := map[string]any{
-		"targets": []any{hostMintedTarget(), other},
-		"host_github_app_token": map[string]any{
-			"token":    "host-minted-token",
-			"scope_id": hostMintedScope,
-		},
-	}
-	parsed, err := parseSettings(config, func(string) string { return "" }, hostMintedScope)
-	if err != nil {
-		t.Fatalf("parseSettings() error = %v, want nil", err)
-	}
-	if len(parsed.targets) != 1 {
-		t.Fatalf("targets = %d, want 1 (only the claim-scoped target)", len(parsed.targets))
-	}
-	if parsed.targets[0].ScopeID != hostMintedScope {
-		t.Fatalf("target scope = %q, want %q", parsed.targets[0].ScopeID, hostMintedScope)
-	}
-	if parsed.targets[0].Token != "host-minted-token" {
-		t.Fatal("claim-scoped target did not receive the injected host token")
 	}
 }
 
@@ -388,8 +355,8 @@ func TestHandleLogsHostTokenFailureReason(t *testing.T) {
 	if result.State != sdk.ResultTerminal {
 		t.Fatalf("State = %q, want terminal", result.State)
 	}
-	if failureClass(result) != FailureInvalidConfig {
-		t.Fatalf("failure class = %q, want %q", failureClass(result), FailureInvalidConfig)
+	if got := failureClass(result); got != "invalid_config.missing_host_token" {
+		t.Fatalf("failure class = %q, want %q", got, "invalid_config.missing_host_token")
 	}
 	if !strings.Contains(logLines.String(), `"reason":"missing_host_token"`) {
 		t.Fatalf("diagnostic log = %q, want reason missing_host_token", logLines.String())

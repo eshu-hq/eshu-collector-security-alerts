@@ -81,6 +81,9 @@ type settings struct {
 type configError struct {
 	reason string
 	msg    string
+	// count is the number of offending entries for reasons that count them
+	// (target_scope_mismatch); zero otherwise.
+	count int
 }
 
 func (e *configError) Error() string { return e.msg }
@@ -90,7 +93,10 @@ const (
 	reasonMissingHostToken  = "missing_host_token"
 	reasonHostTokenMismatch = "host_token_scope_mismatch"
 	reasonMalformedHostKey  = "malformed_host_token"
-	reasonNoClaimTarget     = "no_claim_scoped_target"
+	// reasonTargetScopeMismatch marks an activation that lists a target whose
+	// scope_id differs from the claim scope. One activation plans exactly one
+	// scope, so such a target is never collected under any auth mode.
+	reasonTargetScopeMismatch = "target_scope_mismatch"
 )
 
 // configFailureReason recovers the bounded reason from a parseSettings
@@ -101,6 +107,16 @@ func configFailureReason(err error) string {
 		return cerr.reason
 	}
 	return ""
+}
+
+// configFailureCount recovers the offending-entry count a counted reason
+// carries, or zero when the failure carries none.
+func configFailureCount(err error) int {
+	var cerr *configError
+	if errors.As(err, &cerr) {
+		return cerr.count
+	}
+	return 0
 }
 
 // parseSettings decodes the activation config into producer targets. The
@@ -136,40 +152,46 @@ func parseSettings(config map[string]any, getenv func(string) string, claimScope
 	if len(decoded.Targets) == 0 {
 		return settings{}, fmt.Errorf("config targets are required")
 	}
+	// One activation plans exactly one scope (its host.scope.id), and Collect
+	// looks targets up by claim scope. A target for any other scope is never
+	// collected under any auth mode, so it is a misconfiguration of the whole
+	// activation: refuse it loudly instead of dropping it and leaving the
+	// repository silently uncollected (eshu-hq/eshu#9289). The count is the
+	// only detail; no scope id, repository, or credential enters the error.
+	if mismatched := countTargetsOutsideClaimScope(decoded.Targets, claimScopeID); mismatched > 0 {
+		return settings{}, &configError{
+			reason: reasonTargetScopeMismatch,
+			count:  mismatched,
+			msg: fmt.Sprintf(
+				"%d target(s) name a scope other than the claim scope; an activation plans exactly one scope",
+				mismatched,
+			),
+		}
+	}
 	targets := make([]securityalert.TargetConfig, 0, len(decoded.Targets))
 	for i, target := range decoded.Targets {
-		// Only the claim's host_minted target may receive the per-claim
-		// credential: a host_minted target scoped elsewhere is dropped from
-		// this claim's run instead of inheriting a token minted for a
-		// different scope. Collect looks up targets by claim scope, so the
-		// dropped target is never spent here; the claim for its own scope
-		// keeps it with its own stanza.
-		if hostMintedForOtherScope(target, claimScopeID) {
-			continue
-		}
 		mapped, err := mapTarget(target, getenv, host, claimScopeID)
 		if err != nil {
 			return settings{}, fmt.Errorf("targets[%d]: %w", i, err)
 		}
 		targets = append(targets, mapped)
 	}
-	if len(targets) == 0 {
-		return settings{}, &configError{reason: reasonNoClaimTarget, msg: "no configured target serves the claim scope"}
-	}
 	return settings{
 		targets: targets,
 	}, nil
 }
 
-// hostMintedForOtherScope reports whether a target spends per-claim host
-// credentials for a scope other than the claim's. Static targets are never
-// dropped: their credential resolves from the process environment and carries
-// no per-claim binding.
-func hostMintedForOtherScope(target targetJSON, claimScopeID string) bool {
-	if strings.ToLower(strings.TrimSpace(target.AuthMode)) != securityalert.AuthModeHostMinted {
-		return false
+// countTargetsOutsideClaimScope counts targets, in any auth mode, whose
+// scope_id differs from the claim scope after trimming.
+func countTargetsOutsideClaimScope(targets []targetJSON, claimScopeID string) int {
+	claimScope := strings.TrimSpace(claimScopeID)
+	count := 0
+	for _, target := range targets {
+		if strings.TrimSpace(target.ScopeID) != claimScope {
+			count++
+		}
 	}
-	return strings.TrimSpace(target.ScopeID) != strings.TrimSpace(claimScopeID)
+	return count
 }
 
 // extractHostAppToken pulls the per-claim host-minted credential out of the

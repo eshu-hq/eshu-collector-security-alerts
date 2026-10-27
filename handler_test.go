@@ -190,8 +190,10 @@ func TestHandleDeniesMissingTargetsWithoutProviderContact(t *testing.T) {
 	}
 }
 
-// TestHandleRejectsUnknownScope maps an unconfigured scope to a retryable
-// result with no facts, never a terminal failure for a routing miss.
+// TestHandleRejectsUnknownScope fails a claim whose scope no configured target
+// serves as terminal invalid_config with the target_scope_mismatch reason: an
+// activation plans exactly one scope, so no other claim will ever cover the
+// configured target and a retry cannot help (eshu-hq/eshu#9289).
 func TestHandleRejectsUnknownScope(t *testing.T) {
 	t.Parallel()
 
@@ -205,8 +207,11 @@ func TestHandleRejectsUnknownScope(t *testing.T) {
 		Contract:        Contract(),
 		Config:          testConfig(t),
 	})
-	if result.State != sdk.ResultRetryable {
-		t.Fatalf("State = %q, want retryable", result.State)
+	if result.State != sdk.ResultTerminal {
+		t.Fatalf("State = %q, want terminal", result.State)
+	}
+	if got := failureClass(result); got != "invalid_config.target_scope_mismatch" {
+		t.Fatalf("failure class = %q, want %q", got, "invalid_config.target_scope_mismatch")
 	}
 	if len(result.Facts) != 0 {
 		t.Fatalf("facts = %d, want 0 with a failure state", len(result.Facts))

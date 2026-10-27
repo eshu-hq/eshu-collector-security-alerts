@@ -10,16 +10,20 @@
 #   host.scope.id        = the in-tree target's scope_id
 #   host.scope.kind      = security_alert
 #   host.sourceSystem    = the in-tree source system (security_alert)
-#   activation instance id (--instance) = the in-tree collector instance id
+# The activation instance id (--instance) must differ from any live in-tree
+# collector instance id; record the old-to-new mapping. Only the payload's
+# collector_instance_id changes.
 # The values below are placeholders. Read the real ones from the live in-tree
 # configuration; do not invent new ones.
 host:
   # Source system recorded on every fact. Match the claim the coordinator plans.
   sourceSystem: security_alert
   scope:
-    # One activation covers the security-alert targets below. The claim's
-    # scope id selects the target; scope ids are part of every stable fact
-    # key, so choose them once and keep them.
+    # One activation serves one feed: this scope id and the single target
+    # below. A target naming any other scope fails the activation as
+    # invalid_config (target_scope_mismatch); run one activation per
+    # repository. Scope ids are part of every stable fact key, so choose them
+    # once and keep them.
     id: security-alert:github:example-org/example-repo
     kind: security_alert
 process:

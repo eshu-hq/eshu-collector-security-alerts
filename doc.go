@@ -6,7 +6,7 @@
 // request into one SDK result: it validates the request, resolves the
 // activation config (targets plus the shared host-level limits stanza)
 // against the process environment, runs the securityalert producer, and maps
-// every outcome — including a bad activation or an unconfigured scope — to a
+// every outcome — including a bad activation or a target outside the claim scope — to a
 // result the host validator accepts. Authorization is host-enforced at
 // emission; the satellite carries no authorization material.
 package collector

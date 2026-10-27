@@ -61,8 +61,9 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 
 	parsed, err := parseSettings(request.Config, h.getenv, claim.Scope.ID)
 	if err != nil {
-		h.logLine(claim, FailureInvalidConfig, "", configFailureReason(err))
-		return terminalResult(claim, started, FailureInvalidConfig)
+		reason := configFailureReason(err)
+		h.logConfigLine(claim, reason, configFailureCount(err))
+		return terminalResult(claim, started, FailureInvalidConfig, reason)
 	}
 	source, err := securityalert.NewClaimedSource(securityalert.SourceConfig{
 		CollectorInstanceID: claim.InstanceID,
@@ -71,8 +72,9 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 		Now:                 h.Now,
 	})
 	if err != nil {
-		h.logLine(claim, FailureInvalidConfig, "", configFailureReason(err))
-		return terminalResult(claim, started, FailureInvalidConfig)
+		reason := configFailureReason(err)
+		h.logConfigLine(claim, reason, configFailureCount(err))
+		return terminalResult(claim, started, FailureInvalidConfig, reason)
 	}
 	result, err := source.Collect(ctx, claim)
 	if err == nil {
@@ -88,7 +90,7 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 		return failureResult(claim, started, FailureClaimDeadline, false, 0)
 	}
 	h.logLine(claim, FailureInvalidEvidence, "", "")
-	return terminalResult(claim, started, FailureInvalidEvidence)
+	return terminalResult(claim, started, FailureInvalidEvidence, "")
 }
 
 // logLine writes one bounded diagnostic line: the claim identity the host
@@ -96,6 +98,16 @@ func (h Handler) Handle(ctx context.Context, request Request) sdk.Result {
 // bounded reason code that distinguishes the fail-closed cause. It never
 // carries a credential, a URL, or a provider body.
 func (h Handler) logLine(claim sdk.Claim, class, operation, reason string) {
+	h.writeLine(claim, class, operation, reason, 0)
+}
+
+// logConfigLine is logLine for an invalid_config failure: it adds the count of
+// offending entries a counted reason such as target_scope_mismatch carries.
+func (h Handler) logConfigLine(claim sdk.Claim, reason string, count int) {
+	h.writeLine(claim, FailureInvalidConfig, "", reason, count)
+}
+
+func (h Handler) writeLine(claim sdk.Claim, class, operation, reason string, count int) {
 	if h.Log == nil {
 		return
 	}
@@ -109,6 +121,9 @@ func (h Handler) logLine(claim sdk.Claim, class, operation, reason string) {
 	}
 	if reason != "" {
 		entry["reason"] = reason
+	}
+	if reason == reasonTargetScopeMismatch {
+		entry["mismatched_targets"] = count
 	}
 	line, err := json.Marshal(entry)
 	if err != nil {
