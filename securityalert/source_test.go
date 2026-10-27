@@ -119,6 +119,70 @@ func TestCollectEmitsValidatorCleanResult(t *testing.T) {
 	}
 }
 
+// TestCollectCompleteResultReportsFactCountInStatus pins the count the host
+// reads. The host derives its result line (extension_status.fact_count) and
+// eshu_dp_component_extension_reported_facts_total from status.fact_count, not
+// from len(Facts), so a complete result with no status row reports zero facts
+// while the same claim commits all of them (eshu-hq/eshu#9289).
+func TestCollectCompleteResultReportsFactCountInStatus(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		alerts []GitHubDependabotAlert
+		want   int
+	}{
+		{name: "alerts", alerts: []GitHubDependabotAlert{goldenFixtureAlert()}, want: 1},
+		{name: "no alerts", alerts: nil, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			source, err := NewClaimedSource(SourceConfig{
+				CollectorInstanceID: "security-alert-primary",
+				Targets: []TargetConfig{{
+					Provider:            ProviderGitHubDependabot,
+					Scope:               TargetScopeRepository,
+					ScopeID:             "security-alert:github:example-org/example-repo",
+					Repository:          "example-org/example-repo",
+					Token:               "token-value",
+					AllowedRepositories: []string{"example-org/example-repo"},
+				}},
+				ClientFactory: func(TargetConfig) (RepositoryAlertClient, error) {
+					return stubRepositoryClient{alerts: tc.alerts}, nil
+				},
+				Now: func() time.Time { return time.Date(2026, 5, 16, 11, 0, 0, 0, time.UTC) },
+			})
+			if err != nil {
+				t.Fatalf("NewClaimedSource() error = %v, want nil", err)
+			}
+			result, err := source.Collect(context.Background(), collectTestClaim())
+			if err != nil {
+				t.Fatalf("Collect() error = %v, want nil", err)
+			}
+			if result.State != collector.ResultComplete {
+				t.Fatalf("State = %q, want complete", result.State)
+			}
+			if len(result.Facts) != tc.want {
+				t.Fatalf("len(Facts) = %d, want %d", len(result.Facts), tc.want)
+			}
+			reported := 0
+			for _, status := range result.Statuses {
+				reported += status.FactCount
+			}
+			if reported != len(result.Facts) {
+				t.Fatalf("sum(status.fact_count) = %d, want %d (the host reads this)", reported, len(result.Facts))
+			}
+			if len(result.Statuses) != 1 || result.Statuses[0].Class != collector.StatusComplete || result.Statuses[0].Partial {
+				t.Fatalf("Statuses = %+v, want one complete, non-partial status", result.Statuses)
+			}
+			if _, err := validatorForTest().ValidateResult(result); err != nil {
+				t.Fatalf("ValidateResult() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
 // truncatingStubClient returns a read that hit max_pages so Collect must
 // stay partial with a warning status instead of a complete claim.
 type truncatingStubClient struct {
