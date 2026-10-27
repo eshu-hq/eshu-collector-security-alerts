@@ -26,3 +26,4 @@ spec:
   # No telemetry section: the collector emits no metrics (eshu-hq/eshu#9032),
   # so it declares no component-owned metric prefix. The claim result's
   # failure class is the operator signal.
+# skip-proof: fixture-only lane-selection probe, no semantic change
