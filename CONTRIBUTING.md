@@ -38,7 +38,8 @@ packages silently, or delete assertions to move the number.
 `.github/workflows/ci.yml` selects lanes per PR from changed paths
 (`changes` job): Go sources run `lint`, `test`, `race`; `manifest.yaml`
 and other test-read fixtures run `test` only; shell scripts run `shell`
-only; `Dockerfile` runs `image` (build, no push); `go.mod`/`go.sum`
+only (plus `test` when a test executes the script; no scripts exist today);
+`Dockerfile` runs `image` (build, no push); `go.mod`/`go.sum`
 changes add `govulncheck`; pushes to `main` and the weekly schedule add
 `govulncheck` and advisory `gosec` (SARIF to the Security tab). Workflow
 changes run `actionlint` plus the Go lanes. `ci-complete` is the only

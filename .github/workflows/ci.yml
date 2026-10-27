@@ -12,6 +12,7 @@
 # test-class when a test opens it or a go:embed reaches it (manifest.yaml:
 # manifest_test.go:35, manifest_embed.go:12);
 # config.example.yaml has no test readers, so it is docs-class. Anything
+# else unclassified matches `misc` and runs the full Go lanes (epic default).
 # else unclassified (Makefile, dependabot config) defaults to the Go lanes.
 name: ci
 
@@ -55,6 +56,9 @@ jobs:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
+          # Needed so the `misc` catch-all below can use `!` negations;
+          # groups without negations behave exactly as before.
+          predicate-quantifier: 'some-with-excludes'
           filters: |
             go:
               - '**/*.go'
@@ -76,8 +80,29 @@ jobs:
             workflows:
               - '.github/workflows/**'
             misc:
-              - 'Makefile'
-              - '.github/dependabot.yml'
+              # Default required by the epic: anything not classified above
+              # runs the full Go lanes. The docs skip set (all `*.md`,
+              # LICENSE, CODEOWNERS, docs-class config.example.yaml) stays
+              # negated so docs-only PRs keep running no lanes; every
+              # classified pattern is negated too so narrow lanes
+              # (fixtures/shell/image) keep their shape. Proven by the
+              # docs-only / fixture-only skip proofs.
+              - '**'
+              - '!**/*.md'
+              - '!LICENSE'
+              - '!CODEOWNERS'
+              - '!config.example.yaml'
+              - '!**/*.go'
+              - '!go.mod'
+              - '!go.sum'
+              - '!.golangci.yml'
+              - '!testdata/**'
+              - '!**/*.json'
+              - '!manifest.yaml'
+              - '!**/*.sh'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!.github/workflows/**'
 
   lint:
     needs: changes
@@ -103,7 +128,7 @@ jobs:
           git diff --exit-code -- go.mod go.sum
       - name: 500-line file cap (wc -l, sole static gate)
         run: |
-          over=$(git ls-files '*.go' | xargs wc -l | awk '$1 > 500 && $2 != "total" {print}')
+          over=$(find . -name '*.go' -not -path './vendor/*' -exec wc -l {} + | awk '$1 > 500 && $2 != "total" {print}')
           if [ -n "$over" ]; then echo "$over"; echo "FAIL: .go files over 500 lines"; exit 1; fi
       - name: Diff check
         run: git diff --check
@@ -247,7 +272,7 @@ jobs:
           actionlint
 
   ci-complete:
-    needs: [lint, test, race, shell, image, govulncheck, gosec, actionlint]
+    needs: [changes, lint, test, race, shell, image, govulncheck, gosec, actionlint]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -14,7 +14,7 @@ lint: vet
 	$(GOLANGCI_LINT) fmt --diff ./...
 	$(GO) mod tidy -diff
 	git diff --exit-code -- go.mod go.sum
-	over=$$(git ls-files '*.go' | xargs wc -l | awk '$$1 > 500 && $$2 != "total" {print}'); \
+	over=$$(find . -name '*.go' -not -path './vendor/*' -exec wc -l {} + | awk '$$1 > 500 && $$2 != "total" {print}'); \
 	if [ -n "$$over" ]; then echo "$$over"; echo "FAIL: .go files over 500 lines"; exit 1; fi
 	git diff --check
 
@@ -44,8 +44,8 @@ tidy:
 	$(GO) mod tidy
 
 cap:
-	over=$$(git ls-files '*.go' | xargs wc -l | awk '$$1 > 500 && $$2 != "total" {print}'); \
+	over=$$(find . -name '*.go' -not -path './vendor/*' -exec wc -l {} + | awk '$$1 > 500 && $$2 != "total" {print}'); \
 	if [ -n "$$over" ]; then echo "$$over"; echo "FAIL: .go files over 500 lines"; exit 1; fi
 
 clean:
-	rm -f coverage.out
+	rm -f coverage.out gosec.sarif
