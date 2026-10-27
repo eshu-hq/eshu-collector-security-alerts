@@ -73,15 +73,6 @@ func (s *ClaimedSource) recordFacts(target TargetConfig, facts []collector.Fact)
 	s.metrics().RecordFactsEmitted(target.Provider, counts)
 }
 
-// Bounded Dependabot endpoint operation tokens used as the operation label
-// of truncated-read counts. They match the tokens the provider client
-// stamps on failures: an endpoint shape, never a repository, organization,
-// URL, or credential.
-const (
-	dependabotRepositoryAlertsOperationLabel   = dependabotRepositoryAlertsOperation
-	dependabotOrganizationAlertsOperationLabel = dependabotOrganizationAlertsOperation
-)
-
 // recordTruncatedRead counts one provider read that hit max_pages before the
 // provider stream ended.
 func (s *ClaimedSource) recordTruncatedRead(target TargetConfig, operation string) {

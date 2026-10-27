@@ -1,0 +1,3 @@
+# Local CI artifacts; the race lane uploads the coverprofile instead.
+coverage.out
+gosec.sarif
