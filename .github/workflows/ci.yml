@@ -235,6 +235,10 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      # Required for the SARIF upload step below. That step runs only on
+      # non-PR events, so fork PRs (which cannot hold this permission) are
+      # unaffected: the scan step needs contents:read alone.
+      security-events: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
