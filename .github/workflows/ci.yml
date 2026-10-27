@@ -281,6 +281,10 @@ jobs:
         run: |
           python3 - <<'EOF'
           import json, os
+          # NEEDS_JSON is needs.*.result: {job: "success"|"failure"|"cancelled"|"skipped"}.
+          # NOTE: toJSON(needs) would give job OBJECTS here and never match
+          # below (false-green: aggregator passed with failed lanes in run
+          # 40598497783). Never switch this back without a seeded red proof.
           needs = json.loads(os.environ["NEEDS_JSON"])
           bad = {k: v for k, v in needs.items() if v in ("failure", "cancelled")}
           if bad:
@@ -289,4 +293,4 @@ jobs:
           print("ci-complete: pass (skips allowed)")
           EOF
         env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
+          NEEDS_JSON: ${{ toJSON(needs.*.result) }}
