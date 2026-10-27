@@ -6,6 +6,7 @@ package collector
 import (
 	"context"
 	"errors"
+	"regexp"
 	"time"
 
 	sdk "github.com/eshu-hq/eshu-sdk/collector"
@@ -52,9 +53,36 @@ func failureResult(claim sdk.Claim, observedAt time.Time, class string, terminal
 }
 
 // terminalResult is the bounded terminal shape for bad configuration: an
-// explicit terminal state with a named class.
-func terminalResult(claim sdk.Claim, observedAt time.Time, class string) sdk.Result {
-	return failureResult(claim, observedAt, class, true, 0)
+// explicit terminal state with one failure status. A non-empty reason refines
+// the class inside the same bounded token, "<class>.<reason>" (for example
+// invalid_config.target_scope_mismatch). The SDK status has no free-text field
+// and the host persists the failure class verbatim into last_failure_class and
+// last_failure_message, so the dotted token is how the reason reaches an
+// operator who cannot see this process's stderr. A reason that would not form a
+// valid token is a programming error; the result then falls back to the bare
+// class (the diagnostic line still names the reason).
+func terminalResult(claim sdk.Claim, observedAt time.Time, class, reason string) sdk.Result {
+	return failureResult(claim, observedAt, refinedClass(class, reason), true, 0)
+}
+
+var (
+	// failureTokenPattern mirrors the host's bound on a status failure_class.
+	failureTokenPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,95}$`)
+	// failureReasonPattern is the sub-reason charset: one segment, no dots.
+	failureReasonPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
+)
+
+// refinedClass joins a class and a sub-reason into one failure_class token,
+// or returns the bare class when there is no valid refinement.
+func refinedClass(class, reason string) string {
+	if reason == "" || !failureReasonPattern.MatchString(reason) {
+		return class
+	}
+	token := class + "." + reason
+	if !failureTokenPattern.MatchString(token) {
+		return class
+	}
+	return token
 }
 
 // DeadlineExceededResult is the retryable result for a claim that arrives

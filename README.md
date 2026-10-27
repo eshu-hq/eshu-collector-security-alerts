@@ -91,7 +91,8 @@ not ported:
   host owns continuation and the durable cursor.
 - Shard expansion and retirement claims (#9019): a configured
   `scope_id` carrying a shard or retirement marker is rejected at
-  construction, and a claim naming one fails as an unconfigured scope.
+  construction, and a claim naming one fails as terminal
+  `invalid_config` (`target_scope_mismatch`).
   The host plans shard scopes and drives retirement through grant
   revocation, never through a satellite claim.
 - GitHub App installation-token minting: the satellite threads a
@@ -117,11 +118,25 @@ go run ./cmd/collector < request.json > result.json
 ```
 
 A bad activation fails closed as terminal
-`invalid_config` before any provider contact; an unconfigured scope fails
-retryable with no facts. A claim arriving with no lease time left fails
+`invalid_config` before any provider contact. A claim arriving with no lease time left fails
 retryable as `claim_deadline_exceeded`. `github_app` targets are not served
 over stdio: installation-token minting is host-owned and no mint callback
 crosses the request boundary, so they fail closed at config parse.
+One activation serves one feed. An activation plans exactly one scope, its
+`host.scope.id`, so `config.targets` holds exactly one target and that target's
+`scope_id` equals the claim scope. A target for any other scope, host-minted or
+static, is never collected, so the whole activation fails closed as terminal
+`invalid_config` with the bounded reason `target_scope_mismatch` and the count
+of mismatched targets, never a scope id, repository, or credential. The SDK
+status has no free-text field, so the reason refines the failure class inside
+the one bounded token: the single failure status reads
+`invalid_config.target_scope_mismatch`, and the host records it verbatim in
+`last_failure_class` and `last_failure_message`. Every config reason does the
+same (`invalid_config.missing_host_token`, `invalid_config.host_token_scope_mismatch`,
+`invalid_config.malformed_host_token`); the diagnostic line keeps `failure_class`
+and `reason` separate. Anything that matches `failure_class="invalid_config"`
+exactly must match the prefix `invalid_config(\..*)?` instead. To collect a
+second repository, add a second activation with its own instance id and scope.
 Static-PAT (`token_env`) targets need no provider. `host_minted` targets
 spend the per-claim `host_github_app_token` stanza (`{token, scope_id}`)
 the host delivers at the top level of the activation config: the token lands
@@ -161,7 +176,10 @@ collector uses for the same feed:
 | `host.scope.id` | the in-tree target's `scope_id` | every stable key changes: the feed is ingested as a new scope |
 | `host.scope.kind` | `security_alert` | the scope no longer matches the in-tree scope kind |
 | `host.sourceSystem` | the in-tree source system, `security_alert` | `source_ref` changes on every fact |
-| activation instance id | the in-tree collector instance id | `collector_instance_id` in payloads changes |
+
+The activation instance id is the exception: it must differ from any live
+in-tree instance id, and the cutover record keeps the old-to-new mapping.
+`collector_instance_id` in the payload is the one field that changes.
 
 The collector copies `scope_id`, `collector_instance_id`, and `source_system`
 from the claim the host sends; it has no setting of its own for them.
@@ -169,8 +187,9 @@ from the claim the host sends; it has no setting of its own for them.
 Before enabling an activation, read the values from the live in-tree
 collector instance configuration and write them into the activation. Do not
 copy the placeholders in `config.example.yaml`. Run only one of the two
-collectors per feed: with the same scope and instance id they would write the
-same stable keys.
+collectors per feed. The activation needs its own instance id, because the
+in-tree instance stays registered until it is deactivated. Facts keep their
+stable keys because scope and generation own them.
 
 ## Producer grants
 

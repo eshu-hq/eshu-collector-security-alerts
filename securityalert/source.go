@@ -237,7 +237,15 @@ func (s *ClaimedSource) result(
 	facts []collector.Fact,
 ) collector.Result {
 	state := collector.ResultComplete
-	var statuses []collector.Status
+	// The host reads its result line (extension_status.fact_count) and
+	// eshu_dp_component_extension_reported_facts_total from status.fact_count,
+	// never from len(Facts), so a complete result carries a complete status that
+	// reports the facts it emits. Without it the host logs fact_count=0 for a
+	// claim that commits every fact (eshu-hq/eshu#9289).
+	statuses := []collector.Status{{
+		Class:     collector.StatusComplete,
+		FactCount: len(facts),
+	}}
 	if collection.truncated {
 		state = collector.ResultPartial
 		statuses = []collector.Status{{
