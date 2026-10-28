@@ -36,7 +36,7 @@ packages silently, or delete assertions to move the number.
 ## CI lanes
 
 `.github/workflows/ci.yml` selects lanes per PR from changed paths
-(`changes` job): Go sources run `lint`, `test`, `race`; `manifest.yaml`
+(`changes` job): Go sources run `lint`, `test`, `race`, `image` (the Dockerfile builds the binary from them); `manifest.yaml`
 and other test-read fixtures run `test` only; shell scripts run `shell`
 only (plus `test` when a test executes the script; no scripts exist today);
 `Dockerfile` runs `image` (build, no push); `go.mod`/`go.sum`
