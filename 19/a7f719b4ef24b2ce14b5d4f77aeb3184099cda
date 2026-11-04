@@ -1,0 +1,23 @@
+README.md
+  s_7547c0f0af67d4::t_6fb50b0e4a0098 54,204
+manifest.yaml
+  s_7547c0f0af67d4::t_4b15e92dda940e 7
+manifest_test.go
+  s_7547c0f0af67d4::t_7f65bb63d0ab72 226-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19a7f719b4ef24b2ce14b5d4f77aeb3184099cda",
+  "prompts": {},
+  "sessions": {
+    "s_7547c0f0af67d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7c8b2d5-3286-4c2a-be1f-589162535d83",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Allen Sanabria <asanabria6910@gmail.com>"
+    }
+  }
+}
